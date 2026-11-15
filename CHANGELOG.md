@@ -6,6 +6,13 @@ Notable changes to oxiplot and oxiplot-tex, by release. The format follows
 
 ## [Unreleased]
 
+## [0.1.1]
+
+### Changed
+
+- Depends on oxifit 0.1.1 (formula-parser limits). CI pins its toolchain and
+  checks advisories with cargo-deny.
+
 ## [0.1.0]
 
 First release under the oxiplot names. The code is `oxiroot-plot` and
