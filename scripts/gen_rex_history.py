@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Convert ReX's render history into crates/oxiroot-rex/tests/history.txt.
+"""Convert ReX's render history into crates/oxiplot-tex/tests/history.txt.
 
 Usage:
     python3 scripts/gen_rex_history.py <ReX checkout> <output path>

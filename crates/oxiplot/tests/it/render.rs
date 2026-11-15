@@ -1,32 +1,42 @@
-//! High-level rendering tests that drive the public `oxiroot_plot` API end to end
+//! High-level rendering tests that drive the public `oxiplot` API end to end
 //! and assert real properties of the output: the format chosen by extension, the
 //! in-memory render bytes, DPI scaling, determinism, SVG structure, and that every
 //! artist / layout actually renders. No pixel comparison — only structural and
 //! invariant checks that won't flake.
 
-// These tests plot the oxiroot histogram types.
-#![cfg(feature = "hist")]
-
 #[cfg(feature = "png")]
-use oxiroot_hist::Profile1D;
-use oxiroot_hist::{Graph, Hist, Hist1D, Hist2D};
+use oxiplot::Norm;
 #[cfg(feature = "png")]
-use oxiroot_plot::Norm;
-#[cfg(feature = "png")]
-use oxiroot_plot::SaveOpts;
-use oxiroot_plot::{
-    ratio_subplots, subplots, subplots_grid, Axes, Color, CurveOpts, Error, ErrorbarOpts, FontSet,
-    Hist2dOpts, HistOpts, HistType, PdfPages, Style,
+use oxiplot::SaveOpts;
+use oxiplot::{
+    ratio_subplots, subplots, subplots_grid, Axes, Binned1D, Binned2D, Color, CurveOpts, Error,
+    ErrorbarOpts, FontSet, Hist2dOpts, HistOpts, HistType, PdfPages, Points, Style,
 };
 
 // --- deterministic fixtures (a tiny LCG → reproducible bytes, no rng dep) ---
 
-fn gauss_hist() -> Hist1D {
-    let mut h = Hist::reg(40, 50.0, 130.0)
-        .double()
-        .named("mass")
-        .titled("di-muon mass");
-    h.sumw2();
+/// `n` uniform bin edges over `[lo, hi]`.
+fn edges(n: usize, lo: f64, hi: f64) -> Vec<f64> {
+    (0..=n)
+        .map(|i| lo + (hi - lo) * i as f64 / n as f64)
+        .collect()
+}
+
+/// A 2-D histogram with uniform bins, filled by `(ix, iy) -> weight`.
+fn binned2d(
+    nx: usize,
+    (xlo, xhi): (f64, f64),
+    ny: usize,
+    (ylo, yhi): (f64, f64),
+    w: impl Fn(usize, usize) -> f64,
+) -> Binned2D {
+    let grid = (0..nx)
+        .map(|ix| (0..ny).map(|iy| w(ix, iy)).collect())
+        .collect();
+    Binned2D::new(edges(nx, xlo, xhi), edges(ny, ylo, yhi), grid).unwrap()
+}
+
+fn gauss_hist() -> Binned1D {
     let mut s = 0x1234_5678_9abc_def0u64;
     let mut next = move || {
         s = s
@@ -35,47 +45,42 @@ fn gauss_hist() -> Hist1D {
         (s >> 33) as f64 / (1u64 << 31) as f64
     };
     let mut gauss = move || (0..12).map(|_| next()).sum::<f64>() - 6.0;
-    for _ in 0..5000 {
-        h.fill(90.0 + 8.0 * gauss());
-    }
-    h
+    let samples: Vec<f64> = (0..5000).map(|_| 90.0 + 8.0 * gauss()).collect();
+    Binned1D::from_samples(edges(40, 50.0, 130.0), &samples)
 }
 
-fn graph() -> Graph {
+fn graph() -> Points {
     let x: Vec<f64> = (0..8).map(|i| 55.0 + 10.0 * i as f64).collect();
     let y: Vec<f64> = x
         .iter()
         .map(|v| 1000.0 * (-0.5 * ((v - 90.0) / 9.0).powi(2)).exp())
         .collect();
     let e: Vec<f64> = y.iter().map(|v| v.sqrt().max(5.0)).collect();
-    Graph::with_errors(x.clone(), y, vec![5.0; x.len()], e)
+    Points::new(x.clone(), y)
         .unwrap()
-        .named("data")
+        .with_x_errors(vec![5.0; x.len()])
+        .unwrap()
+        .with_y_errors(e)
+        .unwrap()
 }
 
-fn th2() -> Hist2D {
-    let mut h = Hist::reg(20, -3.0, 3.0)
-        .reg(20, -3.0, 3.0)
-        .double()
-        .named("h2");
-    for ix in 0..20 {
-        for iy in 0..20 {
-            let x = -3.0 + (ix as f64 + 0.5) * 0.3;
-            let y = -3.0 + (iy as f64 + 0.5) * 0.3;
-            h.fill_weight(x, y, (-(x * x + y * y) / 2.0).exp() * 100.0);
-        }
-    }
-    h
+fn th2() -> Binned2D {
+    binned2d(20, (-3.0, 3.0), 20, (-3.0, 3.0), |ix, iy| {
+        let x = -3.0 + (ix as f64 + 0.5) * 0.3;
+        let y = -3.0 + (iy as f64 + 0.5) * 0.3;
+        (-(x * x + y * y) / 2.0).exp() * 100.0
+    })
 }
 
+/// Per-bin means of `y = 1.5 x + {0, 1, 2}` and their standard errors, as a
+/// profile holds them.
 #[cfg(feature = "png")]
-fn profile() -> Profile1D {
-    let mut p = Hist::reg(10, 0.0, 10.0).profile().named("p");
-    for i in 0..400 {
-        let x = (i % 10) as f64 + 0.5;
-        p.fill(x, 1.5 * x + (i % 3) as f64);
-    }
-    p
+fn profile() -> Binned1D {
+    let means: Vec<f64> = (0..10).map(|i| 1.5 * (i as f64 + 0.5) + 1.0).collect();
+    Binned1D::new(edges(10, 0.0, 10.0), means)
+        .unwrap()
+        .with_errors(vec![(2.0f64 / 3.0).sqrt() / 40f64.sqrt(); 10])
+        .unwrap()
 }
 
 /// Decode just the width/height from a PNG's IHDR (big-endian at bytes 16..24).
@@ -93,7 +98,7 @@ fn occurrences(haystack: &str, needle: &str) -> usize {
 
 /// A unique scratch dir for a test that writes files.
 fn scratch(tag: &str) -> std::path::PathBuf {
-    let dir = std::env::temp_dir().join(format!("oxiroot_plot_test_{tag}"));
+    let dir = std::env::temp_dir().join(format!("oxiplot_test_{tag}"));
     std::fs::create_dir_all(&dir).unwrap();
     dir
 }
@@ -177,7 +182,7 @@ fn file_and_in_memory_bytes_agree() {
 
 #[test]
 fn hep_label_adds_glyphs_above_the_frame() {
-    use oxiroot_plot::Style;
+    use oxiplot::Style;
     // The bold experiment label + italic status + right-hand lumi/energy each add
     // glyph paths to the SVG, so a labelled axes renders more `<path` than a bare
     // one with the same data.
@@ -346,16 +351,12 @@ fn all_histtypes_render() {
 fn graph_profile_plot_and_function_render() {
     // symmetric + asymmetric error graphs
     let sym = graph();
-    let asym = Graph::with_asymm_errors(
-        vec![1.0, 2.0, 3.0],
-        vec![3.0, 4.0, 3.5],
-        vec![0.1, 0.1, 0.1],
-        vec![0.2, 0.2, 0.2],
-        vec![0.3, 0.1, 0.2],
-        vec![0.1, 0.3, 0.2],
-    )
-    .unwrap()
-    .named("asym");
+    let asym = Points::new(vec![1.0, 2.0, 3.0], vec![3.0, 4.0, 3.5])
+        .unwrap()
+        .with_x_errors_asym(vec![0.1, 0.1, 0.1], vec![0.2, 0.2, 0.2])
+        .unwrap()
+        .with_y_errors_asym(vec![0.3, 0.1, 0.2], vec![0.1, 0.3, 0.2])
+        .unwrap();
     for g in [&sym, &asym] {
         let mut ax = Axes::new();
         ax.errorbar(g);
@@ -418,27 +419,19 @@ fn hist2d_leaves_empty_bins_as_background() {
     // A fully-filled mesh draws every cell; a mostly-empty one draws far fewer,
     // because empty bins (no data) are not painted — they show the page
     // background instead of the colormap's value-0 color.
-    let rects = |h: &Hist2D| {
+    let rects = |h: &Binned2D| {
         let mut ax = Axes::new();
         ax.hist2d(h);
         occurrences(&ax.to_svg_string(), "<rect")
     };
 
-    let mut full = Hist::reg(10, 0.0, 1.0)
-        .reg(10, 0.0, 1.0)
-        .double()
-        .named("full");
-    for ix in 0..10 {
-        for iy in 0..10 {
-            full.fill_weight(0.05 + ix as f64 * 0.1, 0.05 + iy as f64 * 0.1, 1.0);
-        }
-    }
-    let mut sparse = Hist::reg(10, 0.0, 1.0)
-        .reg(10, 0.0, 1.0)
-        .double()
-        .named("sparse");
-    sparse.fill_weight(0.05, 0.05, 5.0);
-    sparse.fill_weight(0.55, 0.55, 3.0); // only two filled cells
+    let full = binned2d(10, (0.0, 1.0), 10, (0.0, 1.0), |_, _| 1.0);
+    // Only two filled cells.
+    let sparse = binned2d(10, (0.0, 1.0), 10, (0.0, 1.0), |ix, iy| match (ix, iy) {
+        (0, 0) => 5.0,
+        (5, 5) => 3.0,
+        _ => 0.0,
+    });
 
     let (nf, ns) = (rects(&full), rects(&sparse));
     // Background, frame, and colorbar rects are identical between the two; the
@@ -623,11 +616,11 @@ fn custom_font_rejects_garbage() {
 #[cfg(feature = "fit")]
 #[test]
 fn fit_stats_box_renders() {
-    use oxiroot_fit::{FitExt, Model, Points};
-    use oxiroot_plot::StatBox;
+    use oxifit::{FitExt, Model, Points};
+    use oxiplot::StatBox;
 
     // A clean Gaussian sampled as (x, y, sigma) points, fitted through Points
-    // (which impls FitData, so this needs no oxiroot-hist fit feature).
+    // (which implements FitData).
     let xs: Vec<f64> = (0..40).map(|i| 50.0 + 2.0 * i as f64).collect();
     let ys: Vec<f64> = xs
         .iter()
@@ -699,7 +692,7 @@ fn pdf_pages_writes_one_page_per_figure() {
 
 #[test]
 fn pdf_pages_saves_and_matches_single_page_document() {
-    let dir = std::env::temp_dir().join("oxiroot_plot_pdfpages_test");
+    let dir = std::env::temp_dir().join("oxiplot_pdfpages_test");
     std::fs::create_dir_all(&dir).unwrap();
 
     let (fig, mut ax) = subplots();
@@ -747,16 +740,8 @@ fn log_norm_changes_heatmap_and_is_valid() {
 #[test]
 fn log_norm_colorbar_shows_decade_ticks() {
     // A wide dynamic range so the log colorbar spans multiple decades.
-    let mut h = Hist::reg(6, 0.0, 6.0)
-        .reg(1, 0.0, 1.0)
-        .double()
-        .named("wide");
-    for (ix, w) in [1.0, 10.0, 100.0, 1000.0, 10000.0, 100000.0]
-        .iter()
-        .enumerate()
-    {
-        h.fill_weight(ix as f64 + 0.5, 0.5, *w);
-    }
+    let w = [1.0, 10.0, 100.0, 1000.0, 10000.0, 100000.0];
+    let h = binned2d(6, (0.0, 6.0), 1, (0.0, 1.0), |ix, _| w[ix]);
     let mut ax = Axes::new();
     ax.hist2d_with(&h, Hist2dOpts::new().label("weight").log());
     let svg = ax.to_svg_string();
@@ -774,10 +759,8 @@ fn log_norm_colorbar_shows_decade_ticks() {
 fn symlog_norm_handles_data_straddling_zero() {
     // A row of cells running from strongly negative to strongly positive — the
     // regime where a plain log norm masks everything and only SymLog works.
-    let mut h = Hist::reg(5, 0.0, 5.0).reg(1, 0.0, 1.0).double().named("pm");
-    for (ix, w) in [-1000.0, -10.0, 0.0, 10.0, 1000.0].iter().enumerate() {
-        h.fill_weight(ix as f64 + 0.5, 0.5, *w);
-    }
+    let w = [-1000.0, -10.0, 0.0, 10.0, 1000.0];
+    let h = binned2d(5, (0.0, 5.0), 1, (0.0, 1.0), |ix, _| w[ix]);
     let mut ax = Axes::new();
     ax.hist2d_with(
         &h,

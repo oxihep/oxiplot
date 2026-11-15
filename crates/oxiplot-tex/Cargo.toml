@@ -1,5 +1,5 @@
 [package]
-name = "oxiroot-rex"
+name = "oxiplot-tex"
 version.workspace = true
 # Pinned, not inherited: upstream ReX is 2021-edition code, and a workspace
 # edition bump must not migrate it implicitly.
@@ -10,10 +10,10 @@ rust-version.workspace = true
 # LICENSE-3rdparty.
 license = "MIT"
 repository.workspace = true
-homepage.workspace = true
+documentation = "https://docs.rs/oxiplot-tex"
 keywords = ["tex", "latex", "math", "typesetting"]
 categories = ["visualization"]
-description = "TeX math layout for oxiroot-plot: a trimmed, vendored copy of the ReX engine (KenyC/ReX). Internal; not a stable API."
+description = "TeX math layout for oxiplot: a trimmed, vendored copy of the ReX engine (KenyC/ReX). Internal; not a stable API."
 include = ["/src/**/*.rs", "/README.md", "/LICENSE-3rdparty"]
 
 [dependencies]

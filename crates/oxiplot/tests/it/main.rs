@@ -1,4 +1,4 @@
-//! The oxiroot-plot plotting integration tests, compiled as one binary so the
+//! The oxiplot plotting integration tests, compiled as one binary so the
 //! suite links once. Each module is one topic.
 
 mod features;

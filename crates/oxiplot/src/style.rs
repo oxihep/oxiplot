@@ -143,7 +143,7 @@ impl Style {
     ///
     /// # Examples
     /// ```
-    /// use oxiroot_plot::{FontSet, Style};
+    /// use oxiplot::{FontSet, Style};
     /// let style = Style::default().with_fonts(FontSet::dejavu()); // matplotlib look
     /// ```
     #[must_use]

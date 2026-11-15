@@ -1,13 +1,13 @@
 //! A vendored subset of [ReX](https://github.com/KenyC/ReX), a TeX math layout
-//! engine, used by `oxiroot-plot` to typeset `$…$` label spans.
+//! engine, used by `oxiplot` to typeset `$…$` label spans.
 //!
 //! Upstream: KenyC/ReX at `aeccdba38f3fa54195c469319b65c423e17a77ae` (version 0.1.2),
 //! with its `unicode-math` path dependency folded in as a private module. Only the
 //! `ttf-parser` font backend is kept; the renderers, the `font` backend and the
 //! `serde` derives are removed. See `README.md` and `LICENSE-3rdparty`.
 //!
-//! This crate is an implementation detail of `oxiroot-plot`. Its API is ReX's and
-//! is not covered by oxiroot's semver guarantees.
+//! This crate is an implementation detail of `oxiplot`. Its API is ReX's and
+//! is not covered by oxiplot's semver guarantees.
 
 
 

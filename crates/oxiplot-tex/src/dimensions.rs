@@ -168,8 +168,8 @@ impl<U, V> Unit<Ratio<U, V>> {
     /// This can be used to multiply two ratios together, for instance:
     ///
     /// ```
-    /// # use oxiroot_rex::dimensions::units::{Ratio, Pt, Em, Inch};
-    /// # use oxiroot_rex::dimensions::Unit;
+    /// # use oxiplot_tex::dimensions::units::{Ratio, Pt, Em, Inch};
+    /// # use oxiplot_tex::dimensions::Unit;
     /// let x : Unit<Ratio<Pt, Em>>   = Unit::new(4. / 3.);
     /// let y : Unit<Ratio<Inch, Pt>> = Unit::new(5. / 4.);
     ///

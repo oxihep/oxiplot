@@ -30,7 +30,7 @@ pub enum Error {
     MissingFeature {
         /// The output that was asked for (e.g. `"PNG"`).
         output: &'static str,
-        /// The `oxiroot-plot` feature that provides it.
+        /// The `oxiplot` feature that provides it.
         feature: &'static str,
     },
 }
@@ -58,7 +58,7 @@ impl fmt::Display for Error {
             ),
             Error::MissingFeature { output, feature } => write!(
                 f,
-                "{output} output needs the `{feature}` feature of oxiroot-plot"
+                "{output} output needs the `{feature}` feature of oxiplot"
             ),
         }
     }
@@ -69,31 +69,6 @@ impl std::error::Error for Error {}
 impl From<std::io::Error> for Error {
     fn from(e: std::io::Error) -> Self {
         Error::Io(e)
-    }
-}
-
-/// With the `hist` feature, plotting errors convert into the error the rest of
-/// oxiroot uses, so `?` works in a function returning `oxiroot::Result` that both
-/// reads files and saves figures. I/O errors keep their kind
-/// ([`oxiroot_io_core::Error::Io`]) and length mismatches stay
-/// [`oxiroot_io_core::Error::LengthMismatch`]; the others become
-/// [`oxiroot_io_core::Error::Plot`] with this error's message.
-#[cfg(feature = "hist")]
-impl From<Error> for oxiroot_io_core::Error {
-    fn from(e: Error) -> Self {
-        match e {
-            Error::Io(e) => oxiroot_io_core::Error::from(e),
-            Error::LengthMismatch {
-                what,
-                expected,
-                found,
-            } => oxiroot_io_core::Error::LengthMismatch {
-                what: what.to_string(),
-                expected,
-                found,
-            },
-            other => oxiroot_io_core::Error::Plot(other.to_string()),
-        }
     }
 }
 

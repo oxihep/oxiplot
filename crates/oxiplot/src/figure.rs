@@ -17,7 +17,7 @@ use crate::style::Style;
 ///
 /// # Examples
 /// ```
-/// use oxiroot_plot::SaveOpts;
+/// use oxiplot::SaveOpts;
 /// let opts = SaveOpts::new().dpi(300.0).transparent();
 /// ```
 #[derive(Debug, Clone, Default)]
@@ -267,7 +267,7 @@ impl Default for Figure {
 ///
 /// # Examples
 /// ```no_run
-/// use oxiroot_plot::{subplots, PdfPages};
+/// use oxiplot::{subplots, PdfPages};
 /// let mut pdf = PdfPages::new();
 /// for k in 0..3 {
 ///     let (fig, mut ax) = subplots();
@@ -346,7 +346,7 @@ pub fn subplots_with(style: Style) -> (Figure, Axes) {
 ///
 /// # Examples
 /// ```no_run
-/// use oxiroot_plot::subplots_grid;
+/// use oxiplot::subplots_grid;
 /// let (fig, mut axs) = subplots_grid(1, 2);
 /// axs[0].plot(&[0.0, 1.0], &[0.0, 1.0]);
 /// axs[1].plot(&[0.0, 1.0], &[1.0, 0.0]);
@@ -376,10 +376,9 @@ pub fn subplots_grid_with(style: Style, grid: GridSpec) -> (Figure, Vec<Axes>) {
 ///
 /// # Examples
 /// ```no_run
-/// # #[cfg(feature = "hist")] {
-/// use oxiroot_plot::ratio_subplots;
-/// use oxiroot_hist::Hist;
-/// let h = Hist::reg(20, 0.0, 10.0).double().named("h");
+/// use oxiplot::{ratio_subplots, Binned1D};
+/// let edges: Vec<f64> = (0..=20).map(|i| 0.5 * i as f64).collect();
+/// let h = Binned1D::from_samples(edges, &[2.5, 3.1, 3.3, 4.8]);
 /// let (fig, mut main, mut ratio) = ratio_subplots();
 /// main.hist(&h);
 /// main.ylabel("Events");
@@ -387,7 +386,6 @@ pub fn subplots_grid_with(style: Style, grid: GridSpec) -> (Figure, Vec<Axes>) {
 /// ratio.ylabel("data/MC");
 /// ratio.xlabel("x");
 /// fig.ratio(main, ratio).save("ratio.svg").unwrap();
-/// # }
 /// ```
 #[must_use]
 pub fn ratio_subplots() -> (Figure, Axes, Axes) {

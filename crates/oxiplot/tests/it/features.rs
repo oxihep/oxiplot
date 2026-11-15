@@ -2,7 +2,7 @@
 //! implements the data traits, to SVG and PDF, and refuse PNG with an error that
 //! names the missing feature.
 
-use oxiroot_plot::{Axes, Hist1dData, Hist2dData, PointData, SaveOpts};
+use oxiplot::{Axes, Hist1dData, Hist2dData, PointData, SaveOpts};
 
 /// A histogram that is not an oxiroot type.
 struct Counts {
@@ -77,7 +77,7 @@ fn png_output_without_the_png_feature_is_a_clear_error() {
     let err = ax.to_png_bytes(SaveOpts::new()).unwrap_err();
     assert!(err.to_string().contains("`png` feature"), "{err}");
     let dir = std::env::temp_dir();
-    assert!(ax.save(dir.join("oxiroot_plot_no_png.png")).is_err());
+    assert!(ax.save(dir.join("oxiplot_no_png.png")).is_err());
     // SVG and PDF need no feature.
     assert!(ax.to_svg_string().starts_with("<svg"));
     assert!(ax.to_pdf_bytes().starts_with(b"%PDF"));

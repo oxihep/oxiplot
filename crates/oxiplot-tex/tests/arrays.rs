@@ -3,10 +3,10 @@
 //! matrix, and a debug build panicked when the column format and the widest row
 //! disagreed.
 
-use oxiroot_rex::font::backend::ttf_parser::TtfMathFont;
-use oxiroot_rex::layout::engine::LayoutBuilder;
-use oxiroot_rex::parser::error::ParseError;
-use oxiroot_rex::parser::parse;
+use oxiplot_tex::font::backend::ttf_parser::TtfMathFont;
+use oxiplot_tex::layout::engine::LayoutBuilder;
+use oxiplot_tex::parser::error::ParseError;
+use oxiplot_tex::parser::parse;
 
 fn font() -> TtfMathFont<'static> {
     let path = format!("{}/resources/XITS_Math.otf", env!("CARGO_MANIFEST_DIR"));

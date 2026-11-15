@@ -35,7 +35,7 @@ static DEJAVU_OBLIQUE: &[u8] = include_bytes!("../assets/DejaVuSans-Oblique.ttf"
 ///
 /// # Examples
 /// ```no_run
-/// use oxiroot_plot::{Axes, FontSet};
+/// use oxiplot::{Axes, FontSet};
 /// // The matplotlib sans-serif look:
 /// let mut ax = Axes::new();
 /// ax.fonts(FontSet::dejavu());

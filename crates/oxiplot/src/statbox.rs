@@ -4,9 +4,9 @@
 //! every fitted parameter with its uncertainty.
 //!
 //! Everything here is behind the `fit` feature, since it reads an
-//! [`oxiroot_fit::FitResult`].
+//! [`oxifit::FitResult`].
 
-use oxiroot_fit::{FitResult, Model};
+use oxifit::{FitResult, Model};
 
 use crate::axes::Axes;
 use crate::color::Color;
@@ -36,7 +36,7 @@ pub enum Corner {
 ///
 /// # Examples
 /// ```
-/// # use oxiroot_plot::{StatBox, Corner};
+/// # use oxiplot::{StatBox, Corner};
 /// let opts = StatBox::new().corner(Corner::UpperLeft).prob(true).sig_figs(3);
 /// ```
 #[derive(Clone, Debug)]
@@ -337,7 +337,7 @@ mod tests {
 
     #[test]
     fn build_handles_special_params_and_title() {
-        use oxiroot_fit::{FitResult, Model};
+        use oxifit::{FitResult, Model};
 
         let model = Model::new("myfit", &["a", "b"], vec![0.0, 0.0], |_x, _p| 0.0);
         let r = FitResult {

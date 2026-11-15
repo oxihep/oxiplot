@@ -1,7 +1,7 @@
-Third-party code in oxiroot-rex
+Third-party code in oxiplot-tex
 ===============================
 
-oxiroot-rex is a trimmed copy of ReX, a TeX math layout engine, with its
+oxiplot-tex is a trimmed copy of ReX, a TeX math layout engine, with its
 `unicode-math` path dependency folded in. Its components and their licences
 are listed below, with the notices reproduced as the licences require.
 
@@ -43,7 +43,7 @@ That statement comes from the original author. Christopher Breeden added it to
 the original repository's README (https://github.com/ReTeX/ReX, commit
 ed07d57, 2016-12-17, "add license to README"), naming LICENSE-MIT and
 LICENSE-APACHE files that were never committed. It is the Rust project's
-standard dual-licence wording. Of the two licences it offers, oxiroot-rex takes
+standard dual-licence wording. Of the two licences it offers, oxiplot-tex takes
 MIT, whose terms are reproduced above, and applies them to the original code
 under this notice:
 
@@ -119,5 +119,5 @@ from these inputs:
   holes in U+1D400–U+1D7FF (Unicode terms of use,
   https://www.unicode.org/copyright.html).
 
-oxiroot-rex keeps only the facts from the symbol table: each command name, its
+oxiplot-tex keeps only the facts from the symbol table: each command name, its
 code point and its math class. The descriptive character names were dropped.

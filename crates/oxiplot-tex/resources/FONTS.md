@@ -1,9 +1,9 @@
-Fonts used by the oxiroot-rex tests
+Fonts used by the oxiplot-tex tests
 ===================================
 
 These fonts are test data for the upstream ReX unit tests and the render
 history test. They are never packaged: the crate's `include` list leaves them
-out of the published crate. oxiroot-plot bundles its own math font separately.
+out of the published crate. oxiplot bundles its own math font separately.
 
 | File | Font | Version | Copyright (name table) | Licence |
 |------|------|---------|------------------------|---------|

@@ -132,7 +132,7 @@ impl Axes {
     ///
     /// # Examples
     /// ```
-    /// # use oxiroot_plot::{Axes, Style};
+    /// # use oxiplot::{Axes, Style};
     /// let mut ax = Axes::with_style(Style::mplhep());
     /// ax.hep_label("CMS", "Preliminary").hep_rhs("138 fb$^{-1}$ (13 TeV)");
     /// ```
@@ -178,7 +178,7 @@ impl Axes {
     ///
     /// # Examples
     /// ```
-    /// # use oxiroot_plot::Axes;
+    /// # use oxiplot::Axes;
     /// let mut ax = Axes::new();
     /// ax.plot(&[0.0, 1.0, 2.0], &[0.0, 1.0, 0.5]);
     /// ax.grid();
@@ -216,7 +216,7 @@ impl Axes {
     ///
     /// # Examples
     /// ```
-    /// # use oxiroot_plot::{Axes, FontSet};
+    /// # use oxiplot::{Axes, FontSet};
     /// let mut ax = Axes::new();
     /// ax.fonts(FontSet::dejavu());
     /// ```
@@ -250,7 +250,7 @@ impl Axes {
     ///
     /// # Examples
     /// ```no_run
-    /// use oxiroot_plot::{Axes, SaveOpts};
+    /// use oxiplot::{Axes, SaveOpts};
     /// let mut ax = Axes::new();
     /// ax.plot(&[0.0, 1.0], &[0.0, 1.0]);
     /// ax.save_with("plot.png", SaveOpts::new().dpi(300.0)).unwrap();
@@ -347,14 +347,12 @@ impl Axes {
     ///
     /// # Examples
     /// ```no_run
-    /// # #[cfg(feature = "hist")] {
-    /// use oxiroot_plot::{Axes, HistOpts, HistType};
-    /// use oxiroot_hist::Hist;
-    /// let h = Hist::reg(20, 0.0, 10.0).double().named("h");
+    /// use oxiplot::{Axes, Binned1D, HistOpts, HistType};
+    /// let edges: Vec<f64> = (0..=20).map(|i| 0.5 * i as f64).collect();
+    /// let h = Binned1D::from_samples(edges, &[2.5, 3.1, 3.3, 4.8]);
     /// let mut ax = Axes::new();
     /// ax.hist_with(&h, HistOpts::new().histtype(HistType::Step).yerr().label("MC"));
     /// ax.save("h.svg").unwrap();
-    /// # }
     /// ```
     pub fn hist_with(&mut self, h: &impl Hist1dData, opts: HistOpts) -> &mut Self {
         self.adopt_time_format(h.x_time_format());
@@ -397,15 +395,14 @@ impl Axes {
     ///
     /// # Examples
     /// ```no_run
-    /// # #[cfg(feature = "hist")] {
-    /// use oxiroot_plot::Axes;
-    /// use oxiroot_hist::Graph;
-    /// let g = Graph::with_errors(vec![1.0, 2.0], vec![3.0, 4.0], vec![0.1, 0.1], vec![0.2, 0.3])
-    ///     .unwrap();
+    /// use oxiplot::{Axes, Points};
+    /// let g = Points::new(vec![1.0, 2.0], vec![3.0, 4.0])?
+    ///     .with_x_errors(vec![0.1, 0.1])?
+    ///     .with_y_errors(vec![0.2, 0.3])?;
     /// let mut ax = Axes::new();
     /// ax.errorbar(&g);
-    /// ax.save("g.png").unwrap();
-    /// # }
+    /// ax.save("g.png")?;
+    /// # Ok::<(), oxiplot::Error>(())
     /// ```
     pub fn errorbar(&mut self, g: &impl PointData) -> &mut Self {
         self.errorbar_with(g, ErrorbarOpts::default())
@@ -441,14 +438,14 @@ impl Axes {
     ///
     /// # Examples
     /// ```no_run
-    /// # #[cfg(feature = "hist")] {
-    /// use oxiroot_plot::Axes;
-    /// use oxiroot_hist::Hist;
-    /// let tp = Hist::reg(10, 0.0, 10.0).profile().named("p");
+    /// use oxiplot::{Axes, Binned1D};
+    /// // Per-bin means and their errors, as a profile holds them.
+    /// let tp = Binned1D::new(vec![0.0, 1.0, 2.0, 3.0], vec![1.2, 1.9, 3.1])?
+    ///     .with_errors(vec![0.1, 0.2, 0.15])?;
     /// let mut ax = Axes::new();
     /// ax.profile(&tp);
-    /// ax.save("profile.png").unwrap();
-    /// # }
+    /// ax.save("profile.png")?;
+    /// # Ok::<(), oxiplot::Error>(())
     /// ```
     pub fn profile(&mut self, tp: &impl Hist1dData) -> &mut Self {
         let edges = tp.edges();
@@ -487,14 +484,14 @@ impl Axes {
     ///
     /// # Examples
     /// ```no_run
-    /// # #[cfg(feature = "hist")] {
-    /// use oxiroot_plot::{Axes, Colormap, Hist2dOpts};
-    /// use oxiroot_hist::Hist;
-    /// let h = Hist::reg(10, 0.0, 1.0).reg(10, 0.0, 1.0).double().named("h2");
+    /// use oxiplot::{Axes, Binned2D, Colormap, Hist2dOpts};
+    /// let edges: Vec<f64> = (0..=10).map(|i| 0.1 * i as f64).collect();
+    /// let grid = vec![vec![1.0; 10]; 10];
+    /// let h = Binned2D::new(edges.clone(), edges, grid)?;
     /// let mut ax = Axes::new();
     /// ax.hist2d_with(&h, Hist2dOpts::new().cmap(Colormap::Viridis).label("entries"));
-    /// ax.save("h2.png").unwrap();
-    /// # }
+    /// ax.save("h2.png")?;
+    /// # Ok::<(), oxiplot::Error>(())
     /// ```
     pub fn hist2d_with(&mut self, h: &impl Hist2dData, opts: Hist2dOpts) -> &mut Self {
         let xedges = h.x_edges();
@@ -591,7 +588,7 @@ impl Axes {
     ///
     /// # Examples
     /// ```
-    /// # use oxiroot_plot::Axes;
+    /// # use oxiplot::Axes;
     /// let mut ax = Axes::new();
     /// // Overlay a Gaussian curve over x ∈ [0, 10].
     /// ax.function(|x| 1000.0 * (-(x - 5.0_f64).powi(2) / 2.0).exp(), 0.0..10.0);
@@ -631,19 +628,19 @@ impl Axes {
         self
     }
 
-    /// Overlay a fitted [`oxiroot_fit::Model`] curve over `range` (the `fit`
+    /// Overlay a fitted [`oxifit::Model`] curve over `range` (the `fit`
     /// feature). The model is evaluated with its current parameters, so fit it
     /// first (`let r = h.fit(&model)`, then pass `model.with_params(r.params)`).
     #[cfg(feature = "fit")]
-    pub fn model(&mut self, model: &oxiroot_fit::Model, range: Range<f64>) -> &mut Self {
+    pub fn model(&mut self, model: &oxifit::Model, range: Range<f64>) -> &mut Self {
         self.function_with(|x| model.eval(x), range, CurveOpts::default())
     }
 
-    /// Overlay a fitted [`oxiroot_fit::Model`] curve with explicit options.
+    /// Overlay a fitted [`oxifit::Model`] curve with explicit options.
     #[cfg(feature = "fit")]
     pub fn model_with(
         &mut self,
-        model: &oxiroot_fit::Model,
+        model: &oxifit::Model,
         range: Range<f64>,
         opts: CurveOpts,
     ) -> &mut Self {
@@ -654,7 +651,7 @@ impl Axes {
     /// `gStyle->SetOptFit`): the function name, the χ²/ndf of the fit, and every
     /// fitted parameter with its uncertainty. The parameter *names* come from
     /// `model`, the *values* and errors from `result`, so pass the model you
-    /// fitted and the [`FitResult`](oxiroot_fit::FitResult) it produced.
+    /// fitted and the [`FitResult`](oxifit::FitResult) it produced.
     ///
     /// Anchored top-right by default; when a legend is also shown there, the box
     /// is stacked beneath it. Use [`fit_stats_with`](Axes::fit_stats_with) to
@@ -662,8 +659,8 @@ impl Axes {
     ///
     /// # Examples
     /// ```no_run
-    /// # use oxiroot_plot::Axes;
-    /// # use oxiroot_fit::{FitData, FitExt, Model};
+    /// # use oxiplot::Axes;
+    /// # use oxifit::{FitData, FitExt, Model};
     /// # fn demo(data: &impl FitData) {
     /// let model = Model::gaussian("gaus");
     /// let result = data.fit(&model);
@@ -674,11 +671,7 @@ impl Axes {
     /// # }
     /// ```
     #[cfg(feature = "fit")]
-    pub fn fit_stats(
-        &mut self,
-        model: &oxiroot_fit::Model,
-        result: &oxiroot_fit::FitResult,
-    ) -> &mut Self {
+    pub fn fit_stats(&mut self, model: &oxifit::Model, result: &oxifit::FitResult) -> &mut Self {
         self.fit_stats_with(model, result, crate::statbox::StatBox::new())
     }
 
@@ -687,8 +680,8 @@ impl Axes {
     #[cfg(feature = "fit")]
     pub fn fit_stats_with(
         &mut self,
-        model: &oxiroot_fit::Model,
-        result: &oxiroot_fit::FitResult,
+        model: &oxifit::Model,
+        result: &oxifit::FitResult,
         opts: crate::statbox::StatBox,
     ) -> &mut Self {
         self.stats = Some(crate::statbox::build(model, result, &opts));

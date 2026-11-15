@@ -33,7 +33,7 @@ impl GridSpec {
     ///
     /// # Examples
     /// ```
-    /// use oxiroot_plot::{subplots_grid_with, GridSpec};
+    /// use oxiplot::{subplots_grid_with, GridSpec};
     /// // Two stacked panels, the top three times taller than the bottom.
     /// let grid = GridSpec::new(2, 1).height_ratios(vec![3.0, 1.0]).hspace(0.0);
     /// let (fig, axes) = subplots_grid_with(Default::default(), grid);

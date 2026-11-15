@@ -1,34 +1,35 @@
-//! Pure-Rust plotting for ROOT histograms and graphs.
+//! Pure-Rust plotting for high-energy physics.
 //!
-//! `oxiroot-plot` renders histograms and graphs to **SVG, PNG, and PDF** with a
-//! matplotlib-like API and an mplhep-style histogram look — no ROOT, no
-//! matplotlib, no system fonts. It draws the `oxiroot-hist` types
-//! (`Hist1D`/`Hist2D`/`Graph`/`Profile1D`, the `hist` feature) and any other data that
-//! implements [`Hist1dData`], [`Hist2dData`] or [`PointData`].
+//! `oxiplot` renders histograms and graphs to **SVG, PNG, and PDF** with a
+//! matplotlib-like API and an mplhep-style histogram look — no Python, no
+//! matplotlib, no system fonts. It draws any data that implements
+//! [`Hist1dData`], [`Hist2dData`] or [`PointData`]: plain arrays through
+//! [`Binned1D`], [`Binned2D`] and [`Points`], or the histograms and graphs of
+//! [oxiroot](https://github.com/oxihep/oxiroot) (its `plot` feature).
 //! Everything is drawn through one backend-independent draw IR that fans out
 //! to a tiny-skia raster (PNG), a hand-written SVG, and a hand-written PDF, so
 //! the three outputs share identical geometry. The default font is STIX Two (a
 //! LaTeX-like serif; see [`FontSet`]), and `$…$` math is typeset with the ReX
 //! TeX engine into the same IR.
 //!
-//! The `hist`, `png` (PNG output) and `math` (TeX math) features are on by
+//! The `png` (PNG output) and `math` (TeX math) features are on by
 //! default. Without them, SVG and PDF still render, math spans are laid out as
 //! plain text, and a PNG request returns [`Error::MissingFeature`].
 //!
 //! # What it can draw
 //!
-//! - **Histograms** — [`Axes::hist`]/[`Axes::hist_with`] draw a `Hist1D` as an mplhep
+//! - **Histograms** — [`Axes::hist`]/[`Axes::hist_with`] draw 1-D binned data as an mplhep
 //!   staircase ([`HistType::Step`]/`Fill`/`Band`/`Errorbar`) with `√N`/Sumw2
 //!   error bars.
-//! - **Graphs & profiles** — [`Axes::errorbar`] (`Graph`, any error variant) and
-//!   [`Axes::profile`] (`Profile1D`); [`Axes::plot`] for raw `(x, y)`.
-//! - **2-D histograms** — [`Axes::hist2d`]/[`Axes::hist2d_with`] render a `Hist2D` as
+//! - **Graphs & profiles** — [`Axes::errorbar`] (points with symmetric or
+//!   asymmetric errors) and [`Axes::profile`]; [`Axes::plot`] for raw `(x, y)`.
+//! - **2-D histograms** — [`Axes::hist2d`]/[`Axes::hist2d_with`] render a 2-D grid as
 //!   a color mesh with a colorbar and the real matplotlib `viridis`/`plasma`
 //!   [`Colormap`]s. [`Hist2dOpts::log`] (or [`Hist2dOpts::norm`] with a [`Norm`])
 //!   switches to a log / symlog color scale with a decade colorbar, like
 //!   matplotlib's `LogNorm`/`SymLogNorm`.
 //! - **Curves** — [`Axes::function`] overlays any analytic closure; with the
-//!   `fit` feature, `Axes::model` overlays a fitted `oxiroot_fit::Model`.
+//!   `fit` feature, `Axes::model` overlays a fitted `oxifit::Model`.
 //! - **Decoration** — `xlabel`/`ylabel`/`title` (with LaTeX), `xlim`/`ylim`,
 //!   [`Axes::legend`], and [`Axes::grid`].
 //! - **Layouts** — [`subplots_grid`] and a custom [`GridSpec`] for multi-panel
@@ -45,16 +46,11 @@
 //! # A histogram with data points
 //!
 //! ```no_run
-//! # #[cfg(feature = "hist")] {
-//! use oxiroot_plot::{Axes, Color, ErrorbarOpts, HistOpts, HistType};
-//! use oxiroot_hist::{Hist, Graph};
+//! use oxiplot::{Axes, Binned1D, Color, ErrorbarOpts, HistOpts, HistType, Points};
 //!
-//! let mut mc = Hist::reg(50, 0.0, 100.0).double().named("mc");
-//! mc.sumw2();
-//! for x in [40.0, 48.0, 50.0, 52.0, 60.0] {
-//!     mc.fill(x);
-//! }
-//! let data = Graph::with_errors(vec![50.0], vec![3.0], vec![0.0], vec![1.7]).unwrap().named("d");
+//! let edges: Vec<f64> = (0..=50).map(|i| 2.0 * i as f64).collect();
+//! let mc = Binned1D::from_samples(edges, &[40.0, 48.0, 50.0, 52.0, 60.0]);
+//! let data = Points::new(vec![50.0], vec![3.0])?.with_y_errors(vec![1.7])?;
 //!
 //! let mut ax = Axes::new();
 //! ax.hist_with(&mc, HistOpts::new().histtype(HistType::Fill).label("MC"));
@@ -63,19 +59,17 @@
 //! ax.ylabel("Events");
 //! ax.legend();
 //! ax.save("pt.png")?;         // or "pt.svg" / "pt.pdf"
-//! # }
-//! # Ok::<(), oxiroot_plot::Error>(())
+//! # Ok::<(), oxiplot::Error>(())
 //! ```
 //!
 //! # A ratio plot
 //!
 //! ```no_run
-//! # #[cfg(feature = "hist")] {
-//! use oxiroot_plot::{ratio_subplots, Color, ErrorbarOpts, HistOpts, HistType};
-//! use oxiroot_hist::{Hist, Graph};
+//! use oxiplot::{ratio_subplots, Binned1D, Color, ErrorbarOpts, HistOpts, HistType, Points};
 //!
-//! let mc = Hist::reg(50, 0.0, 100.0).double().named("mc");
-//! let ratio_points = Graph::with_errors(vec![50.0], vec![1.0], vec![0.0], vec![0.1]).unwrap().named("r");
+//! let edges: Vec<f64> = (0..=50).map(|i| 2.0 * i as f64).collect();
+//! let mc = Binned1D::from_samples(edges, &[40.0, 48.0, 50.0, 52.0, 60.0]);
+//! let ratio_points = Points::new(vec![50.0], vec![1.0])?.with_y_errors(vec![0.1])?;
 //!
 //! let (fig, mut main, mut ratio) = ratio_subplots();
 //! main.hist_with(&mc, HistOpts::new().histtype(HistType::Fill).label("MC"));
@@ -86,11 +80,10 @@
 //! ratio.ylabel("data/MC");
 //! ratio.xlabel("$p_T$ [GeV]");
 //! fig.ratio(main, ratio).save("ratio.pdf")?;
-//! # }
-//! # Ok::<(), oxiroot_plot::Error>(())
+//! # Ok::<(), oxiplot::Error>(())
 //! ```
 
-#![doc(html_root_url = "https://docs.rs/oxiroot-plot")]
+#![doc(html_root_url = "https://docs.rs/oxiplot")]
 
 // The modules are private: every public item is re-exported at the crate root
 // below, so each has one path.
@@ -122,7 +115,7 @@ pub use artists::{HistType, Marker, ParseHistTypeError, ParseMarkerError};
 pub use axes::{Axes, CurveOpts, ErrorbarOpts, Hist2dOpts, HistOpts};
 pub use cmap::{Colormap, ParseColormapError};
 pub use color::{Color, ParseColorError, TAB10};
-pub use data::{Hist1dData, Hist2dData, PointData};
+pub use data::{Binned1D, Binned2D, Hist1dData, Hist2dData, PointData, Points};
 pub use error::{Error, Result};
 pub use figure::{
     ratio_subplots, ratio_subplots_with, subplots, subplots_grid, subplots_grid_with,
@@ -142,8 +135,6 @@ mod tests {
     // The render IR, text/math layout, and backends are private to the crate;
     // the tests reach them through `crate::` (still accessible in-crate).
     use crate::{draw, mathtext, render, text};
-    #[cfg(feature = "hist")]
-    use oxiroot_hist::{Graph, Hist, Hist1D};
 
     /// `groups` render to a PNG, or, without the `png` feature, to the error
     /// that names it; they render to an SVG either way.
@@ -160,8 +151,9 @@ mod tests {
         assert!(svg.starts_with("<svg") && svg.contains("</svg>"));
     }
 
-    #[cfg(feature = "hist")]
-    fn gauss_hist() -> Hist1D {
+    /// 20 000 approximately Gaussian samples (mean 90, σ 8) in 40 bins over
+    /// [50, 130).
+    fn gauss_hist() -> Binned1D {
         let mut seed = 0x2545_F491_4F6C_DD1Du64;
         let mut next = move || {
             seed = seed
@@ -170,12 +162,9 @@ mod tests {
             (seed >> 33) as f64 / (1u64 << 31) as f64
         };
         let mut gauss = move || (0..12).map(|_| next()).sum::<f64>() - 6.0;
-        let mut h = Hist::reg(40, 50.0, 130.0).double().named("mass");
-        h.sumw2();
-        for _ in 0..20000 {
-            h.fill(90.0 + 8.0 * gauss());
-        }
-        h
+        let edges: Vec<f64> = (0..=40).map(|i| 50.0 + 2.0 * i as f64).collect();
+        let samples: Vec<f64> = (0..20000).map(|_| 90.0 + 8.0 * gauss()).collect();
+        Binned1D::from_samples(edges, &samples)
     }
 
     #[test]
@@ -219,7 +208,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "hist")]
     fn hist_step_and_errorbar() {
         let h = gauss_hist();
         let mut ax = Axes::new();
@@ -233,7 +221,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "hist")]
     fn graph_with_legend() {
         let x: Vec<f64> = (0..6).map(|i| 60.0 + 12.0 * i as f64).collect();
         let y: Vec<f64> = x
@@ -241,9 +228,12 @@ mod tests {
             .map(|x| 1500.0 * (-0.5 * ((x - 90.0) / 9.0).powi(2)).exp())
             .collect();
         let e: Vec<f64> = y.iter().map(|v| v.sqrt().max(10.0)).collect();
-        let g = Graph::with_errors(x.clone(), y, vec![6.0; x.len()], e)
+        let g = Points::new(x.clone(), y)
             .unwrap()
-            .named("g");
+            .with_x_errors(vec![6.0; x.len()])
+            .unwrap()
+            .with_y_errors(e)
+            .unwrap();
         let mut ax = Axes::new();
         ax.errorbar_with(&g, ErrorbarOpts::new().color(Color::BLACK).label("data"));
         ax.legend();
@@ -252,19 +242,20 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "hist")]
     fn hist2d_heatmap_with_colorbar() {
-        let mut h2 = Hist::reg(20, -3.0, 3.0)
-            .reg(20, -3.0, 3.0)
-            .double()
-            .named("h2");
-        for ix in 0..20 {
-            for iy in 0..20 {
-                let x = -3.0 + (ix as f64 + 0.5) * 0.3;
-                let y = -3.0 + (iy as f64 + 0.5) * 0.3;
-                h2.fill_weight(x, y, (-(x * x + y * y) / 2.0).exp() * 100.0);
-            }
-        }
+        let edges: Vec<f64> = (0..=20).map(|i| -3.0 + 0.3 * i as f64).collect();
+        let grid: Vec<Vec<f64>> = (0..20)
+            .map(|ix| {
+                (0..20)
+                    .map(|iy| {
+                        let x = -3.0 + (ix as f64 + 0.5) * 0.3;
+                        let y = -3.0 + (iy as f64 + 0.5) * 0.3;
+                        (-(x * x + y * y) / 2.0).exp() * 100.0
+                    })
+                    .collect()
+            })
+            .collect();
+        let h2 = Binned2D::new(edges.clone(), edges, grid).unwrap();
         let mut ax = Axes::new();
         ax.hist2d_with(&h2, Hist2dOpts::new().label("entries"));
         let (w, h) = ax.style.figsize_px();
@@ -597,7 +588,7 @@ mod tests {
             .unwrap();
         ax.xlabel("x");
         let dir = std::env::temp_dir();
-        let path = dir.join("oxiroot_plot_test.pdf");
+        let path = dir.join("oxiplot_test.pdf");
         ax.save(&path).unwrap();
         let bytes = std::fs::read(&path).unwrap();
         assert!(bytes.starts_with(b"%PDF-1.4"), "PDF header");
@@ -628,7 +619,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "hist")]
     fn visual_dump() {
         let Ok(dir) = std::env::var("PLOT_DUMP") else {
             return;
@@ -669,14 +659,10 @@ mod tests {
             .map(|i| 0.5 * (edges[i] + edges[i + 1]))
             .collect();
         let ones: Vec<f64> = centers.iter().map(|_| 1.0).collect();
-        let r = Graph::with_errors(
-            centers.clone(),
-            ones,
-            vec![0.0; centers.len()],
-            vec![0.08; centers.len()],
-        )
-        .unwrap()
-        .named("r");
+        let r = Points::new(centers.clone(), ones)
+            .unwrap()
+            .with_y_errors(vec![0.08; centers.len()])
+            .unwrap();
         ratio.errorbar_with(&r, ErrorbarOpts::new().color(Color::BLACK));
         ratio.ylim(0.5..1.5);
         ratio.ylabel("data/MC");
@@ -717,13 +703,12 @@ mod tests {
     }
 
     /// Overlaying a fitted `Model` adds a curve (one polyline) on top of the
-    /// histogram. Lives in-crate because it needs the optional `oxiroot_fit`
-    /// dependency, which is only present under the `fit` feature (and the
-    /// histogram needs `hist`).
-    #[cfg(all(feature = "fit", feature = "hist"))]
+    /// histogram. Lives in-crate because it needs the optional `oxifit`
+    /// dependency, which is only present under the `fit` feature.
+    #[cfg(feature = "fit")]
     #[test]
     fn model_overlay_adds_a_curve() {
-        use oxiroot_fit::Model;
+        use oxifit::Model;
         let h = gauss_hist();
         let model = Model::gaussian("g").with_params(vec![4000.0, 90.0, 8.0]);
 
@@ -748,12 +733,40 @@ mod tests {
     /// axes take the format from the data, and the ticks step in hours rather
     /// than in decimals.
     #[test]
-    #[cfg(feature = "hist")]
     fn a_time_axis_is_picked_up_from_the_data_it_plots() {
-        let mut h = Hist::reg(24, 0.0, 86_400.0).double().named("rate");
-        h.xaxis.set_time_format("%H:%M%F2024-01-01 00:00:00");
-        h.fill(3600.0);
+        /// Hourly counts over a day, on a time axis.
+        struct Rate(Option<&'static str>);
+        impl Hist1dData for Rate {
+            fn edges(&self) -> Vec<f64> {
+                (0..=24).map(|i| 3600.0 * i as f64).collect()
+            }
+            fn values(&self) -> Vec<f64> {
+                let mut v = vec![0.0; 24];
+                v[1] = 1.0;
+                v
+            }
+            fn error(&self, i: usize) -> f64 {
+                self.values()[i].sqrt()
+            }
+            fn x_time_format(&self) -> Option<String> {
+                self.0.map(str::to_owned)
+            }
+        }
+        /// Two points whose x values are times.
+        struct Timed;
+        impl PointData for Timed {
+            fn xs(&self) -> Vec<f64> {
+                vec![0.0, 3600.0]
+            }
+            fn ys(&self) -> Vec<f64> {
+                vec![1.0, 2.0]
+            }
+            fn x_time_format(&self) -> Option<String> {
+                Some("%H:%M".into())
+            }
+        }
 
+        let h = Rate(Some("%H:%M%F2024-01-01 00:00:00"));
         let mut ax = Axes::new();
         ax.hist(&h);
         let time = ax.x_time_format_for_test().expect("adopted from the data");
@@ -765,19 +778,14 @@ mod tests {
         ax.x_time_format("%d/%m").hist(&h);
         assert_eq!(ax.x_time_format_for_test().unwrap().format, "%d/%m");
 
-        // A histogram with an ordinary axis stays numeric.
-        let plain = Hist::reg(4, 0.0, 4.0).double().named("plain");
+        // Data without a time format stays numeric.
         let mut ax = Axes::new();
-        ax.hist(&plain);
+        ax.hist(&Rate(None));
         assert!(ax.x_time_format_for_test().is_none());
 
-        // A graph takes it from its display frame, as ROOT stores it.
-        let mut frame = Hist::reg(2, 0.0, 7200.0).float().named("Graph");
-        frame.xaxis.set_time_format("%H:%M");
-        let mut g = Graph::new(vec![0.0, 3600.0], vec![1.0, 2.0]).unwrap();
-        g.histogram = Some(frame);
+        // Points carry one too.
         let mut ax = Axes::new();
-        ax.errorbar(&g);
+        ax.errorbar(&Timed);
         assert_eq!(ax.x_time_format_for_test().unwrap().format, "%H:%M");
 
         // And it renders.

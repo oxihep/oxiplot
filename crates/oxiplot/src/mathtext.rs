@@ -10,17 +10,17 @@
 //! failing, and so does every math run in a build without the `math` feature.
 
 #[cfg(feature = "math")]
-use oxiroot_rex::font::backend::ttf_parser::TtfMathFont;
+use oxiplot_tex::font::backend::ttf_parser::TtfMathFont;
 #[cfg(feature = "math")]
-use oxiroot_rex::font::common::GlyphId;
+use oxiplot_tex::font::common::GlyphId;
 #[cfg(feature = "math")]
-use oxiroot_rex::layout::engine::LayoutBuilder;
+use oxiplot_tex::layout::engine::LayoutBuilder;
 #[cfg(feature = "math")]
-use oxiroot_rex::layout::Style;
+use oxiplot_tex::layout::Style;
 #[cfg(feature = "math")]
-use oxiroot_rex::parser::parse;
+use oxiplot_tex::parser::parse;
 #[cfg(feature = "math")]
-use oxiroot_rex::render::{Backend, Cursor, FontBackend, GraphicsBackend, Renderer, RGBA};
+use oxiplot_tex::render::{Backend, Cursor, FontBackend, GraphicsBackend, Renderer, RGBA};
 
 use crate::color::Color;
 use crate::draw::{DrawCommand, DrawGroup, Path, Pt, Seg};

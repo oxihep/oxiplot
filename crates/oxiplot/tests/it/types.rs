@@ -3,7 +3,7 @@
 
 use std::str::FromStr;
 
-use oxiroot_plot::{Color, Colormap, HistType, Marker};
+use oxiplot::{Color, Colormap, HistType, Marker};
 
 #[test]
 fn color_hex_round_trips_with_to_hex() {

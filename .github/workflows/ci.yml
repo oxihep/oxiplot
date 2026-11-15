@@ -1,0 +1,99 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+
+jobs:
+  test:
+    name: test / lint / fmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Format
+        run: cargo fmt --all --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+      - name: Test
+        run: cargo test --workspace --all-features
+
+  features:
+    name: feature combinations
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-hack
+        uses: taiki-e/install-action@cargo-hack
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: No features, and each feature alone
+        run: cargo hack check --workspace --each-feature --no-dev-deps
+
+      - name: Test with no default features
+        # An SVG/PDF-only build: no rasterizer, and `$…$` laid out as plain text.
+        run: cargo test -p oxiplot --no-default-features
+
+      - name: Default builds do not compile the fitter
+        # Only the opt-in `fit` feature (the model overlay and stat box) may
+        # bring in oxifit and its formula engine.
+        run: |
+          set -euo pipefail
+          if cargo tree -p oxiplot -e normal | grep -E 'oxifit'; then
+            echo "oxiplot (default features) must not depend on oxifit"; exit 1
+          fi
+
+  msrv:
+    name: minimum Rust version (1.95)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install the declared rust-version
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.95"
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Check
+        run: cargo check --workspace --all-targets --all-features
+
+  docs:
+    name: API docs
+    runs-on: ubuntu-latest
+    env:
+      RUSTDOCFLAGS: -D warnings
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build the docs, denying broken links
+        run: cargo doc --no-deps --all-features --workspace

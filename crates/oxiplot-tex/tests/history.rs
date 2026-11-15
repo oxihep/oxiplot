@@ -6,10 +6,10 @@
 //! the same size and the same glyphs and rules (in any order, each used once);
 //! a failed record must still fail. Values may differ by rounding only.
 
-use oxiroot_rex::font::backend::ttf_parser::TtfMathFont;
-use oxiroot_rex::font::common::GlyphId;
-use oxiroot_rex::layout::{engine::LayoutBuilder, Style};
-use oxiroot_rex::{Backend, Cursor, FontBackend, GraphicsBackend, Renderer, RGBA};
+use oxiplot_tex::font::backend::ttf_parser::TtfMathFont;
+use oxiplot_tex::font::common::GlyphId;
+use oxiplot_tex::layout::{engine::LayoutBuilder, Style};
+use oxiplot_tex::{Backend, Cursor, FontBackend, GraphicsBackend, Renderer, RGBA};
 
 /// One draw call: a glyph `(x, y, glyph id, scale)` or a rule `(x, y, w, h)`.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -129,7 +129,7 @@ fn renders_match_the_upstream_history() {
             .font_size(16.0)
             .style(Style::Display)
             .build();
-        let result = oxiroot_rex::parser::parse(&tex)
+        let result = oxiplot_tex::parser::parse(&tex)
             .map_err(|_| ())
             .and_then(|nodes| engine.layout(&nodes).map_err(|_| ()));
 

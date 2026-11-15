@@ -1,22 +1,22 @@
-# oxiroot-rex
+# oxiplot-tex
 
 A trimmed, vendored copy of [ReX](https://github.com/KenyC/ReX), the TeX math
-layout engine that `oxiroot-plot` uses to typeset `$…$` spans in labels.
+layout engine that `oxiplot` uses to typeset `$…$` spans in labels.
 
 - **Upstream:** KenyC/ReX at `aeccdba38f3fa54195c469319b65c423e17a77ae`
   (2026-02-24), package version 0.1.2. ReX's `deps/unicode-math` path
   dependency is folded in as the private module `unicode_math`.
-- **Status:** an internal part of `oxiroot-plot`. The API is ReX's and has no
-  semver promise; nothing in oxiroot re-exports it.
+- **Status:** an internal part of `oxiplot`. The API is ReX's and has no
+  semver promise; nothing in oxiplot re-exports it.
 - **Why vendored:** ReX is not on crates.io, and a git dependency would keep
-  `oxiroot-plot` (and so the `oxiroot` facade and the CLI) from being published.
+  `oxiplot` (and everything that depends on it) from being published.
 - **Licences:** see [LICENSE-3rdparty](LICENSE-3rdparty), and
   [resources/FONTS.md](resources/FONTS.md) for the test fonts.
 
 ## What was removed
 
 - The renderers (`src/render/{cairo,femtovg,pathfinder,raqote,tinyskia}.rs`);
-  oxiroot-plot draws through its own `Backend`.
+  oxiplot draws through its own `Backend`.
 - The `font` crate backend (`src/font/backend/font.rs`); only the
   `ttf-parser` backend is kept, and it is always on.
 - The `serde` derives and the `log` dependency (both unused).
@@ -38,7 +38,7 @@ Everything else under `src/` is byte-identical to upstream (with
   `mod unicode_math;` is added.
 - `src/dimensions.rs`, `src/layout/mod.rs`, `src/parser/color.rs`: the
   `#[derive(Serialize, Deserialize)]` lines are removed.
-- `src/dimensions.rs`: the doctest imports `oxiroot_rex` instead of `rex`.
+- `src/dimensions.rs`: the doctest imports `oxiplot_tex` instead of `rex`.
 - `src/font/backend.rs`: only `pub mod ttf_parser;` remains, without its
   feature gate.
 - `src/font/common.rs`: the `font`-crate impls and the feature gates on the
@@ -66,7 +66,7 @@ Everything else under `src/` is byte-identical to upstream (with
   the `Symbol::description` field are removed.
 - `src/unicode_math/symbols.rs`: the `description: "…",` entries are removed.
 - Parser snapshots are renamed from `rex__parser__tests__*` to
-  `oxiroot_rex__parser__tests__*` (insta names them after the module path);
+  `oxiplot_tex__parser__tests__*` (insta names them after the module path);
   their contents are unchanged. Four orphaned `snapshot_style*` files are not
   copied.
 
@@ -89,10 +89,10 @@ and list them here.
 git clone https://github.com/KenyC/ReX && cd ReX
 git checkout aeccdba38f3fa54195c469319b65c423e17a77ae
 cargo build
-cp target/debug/build/unicode-math-*/out/symbols.rs <oxiroot>/crates/oxiroot-rex/src/unicode_math/symbols.rs
+cp target/debug/build/unicode-math-*/out/symbols.rs <oxiplot>/crates/oxiplot-tex/src/unicode_math/symbols.rs
 cp target/debug/build/unicode-math-*/out/math_alphanumeric_table_reserved_replacements.rs \
-   <oxiroot>/crates/oxiroot-rex/src/unicode_math/reserved_replacements.rs
-perl -pi -e 's/ description: "(?:[^"\\]|\\.)*",//g' <oxiroot>/crates/oxiroot-rex/src/unicode_math/symbols.rs
+   <oxiplot>/crates/oxiplot-tex/src/unicode_math/reserved_replacements.rs
+perl -pi -e 's/ description: "(?:[^"\\]|\\.)*",//g' <oxiplot>/crates/oxiplot-tex/src/unicode_math/symbols.rs
 ```
 
 The build output should have these SHA-1 sums: `symbols.rs`
@@ -103,7 +103,7 @@ The build output should have these SHA-1 sums: `symbols.rs`
 To regenerate `tests/history.txt` from an upstream checkout (needs PyYAML):
 
 ```sh
-python3 scripts/gen_rex_history.py <ReX checkout> crates/oxiroot-rex/tests/history.txt
+python3 scripts/gen_rex_history.py <ReX checkout> crates/oxiplot-tex/tests/history.txt
 ```
 
 ## Porting an upstream fix
@@ -114,7 +114,7 @@ python3 scripts/gen_rex_history.py <ReX checkout> crates/oxiroot-rex/tests/histo
    `deps/unicode-math/resources/`: if they changed, regenerate the tables as
    above and update the SHA-1 sums.
 2. Apply the change, keeping the local patches above.
-3. Rename any new snapshot from `rex__…` to `oxiroot_rex__…`.
+3. Rename any new snapshot from `rex__…` to `oxiplot_tex__…`.
 4. If upstream re-recorded its render history, rerun
    `scripts/gen_rex_history.py`.
 5. Update the rev (and the version, if it changed) in `Cargo.toml`
