@@ -273,10 +273,10 @@ pub(crate) fn draw_stats(
         Corner::LowerLeft => (frame.x + margin, frame.bottom() - margin - box_h),
     };
     // Stack beneath the legend when both are anchored top-right.
-    if data.corner == Corner::UpperRight {
-        if let Some(lr) = legend_rect {
-            y0 = lr.bottom() + 0.5 * fs;
-        }
+    if data.corner == Corner::UpperRight
+        && let Some(lr) = legend_rect
+    {
+        y0 = lr.bottom() + 0.5 * fs;
     }
     // Keep the box pinned inside the frame (like ROOT's TPaveStats) so a long row
     // or a narrow frame cannot push it out over the ticks and axis labels.
@@ -315,7 +315,7 @@ pub(crate) fn draw_stats(
 
 #[cfg(test)]
 mod tests {
-    use super::{build, fmt_g, StatBox};
+    use super::{StatBox, build, fmt_g};
 
     #[test]
     fn fmt_g_matches_percent_g_style() {

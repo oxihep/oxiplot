@@ -1,7 +1,7 @@
 //! Legend rendering — a framed box of sample swatches and labels, drawn in the
 //! top-right of the axes (matplotlib's `loc="best"` lands there for most plots).
 
-use crate::artists::{draw_marker, LegendHandle, Marker};
+use crate::artists::{LegendHandle, Marker, draw_marker};
 use crate::axes::Axes;
 use crate::color::Color;
 use crate::draw::{DrawCommand, DrawGroup, Path, Rect, Seg, Stroke};

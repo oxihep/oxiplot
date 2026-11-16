@@ -521,11 +521,7 @@ impl Axes {
         // A log scale needs a strictly-positive floor; fall back to the smallest
         // positive bin (or 1) when the user did not set an explicit vmin.
         let default_min = if matches!(opts.norm, crate::norm::Norm::Log) {
-            if dmin_pos.is_finite() {
-                dmin_pos
-            } else {
-                1.0
-            }
+            if dmin_pos.is_finite() { dmin_pos } else { 1.0 }
         } else {
             dmin
         };
