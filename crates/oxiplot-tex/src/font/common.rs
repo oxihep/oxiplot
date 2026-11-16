@@ -60,19 +60,7 @@ pub struct GlyphInstruction {
 
 
 
-impl From<ttf_parser::GlyphId> for GlyphId {
 
-    #[inline]
-    fn from(glyph_id: ttf_parser::GlyphId) -> Self {
-        Self(glyph_id.0)
-    }
-}
-
-impl Into<ttf_parser::GlyphId> for GlyphId {
-    fn into(self) -> ttf_parser::GlyphId {
-        ttf_parser::GlyphId(self.0.into())
-    }
-}
 
 
 

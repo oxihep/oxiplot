@@ -84,7 +84,7 @@ impl<F : MathFont> Backend<F> for BBoxBackend {}
 
 #[cfg(test)]
 mod tests {
-    use crate::font::backend::ttf_parser::TtfMathFont;
+    use crate::font::backend::skrifa::SkrifaMathFont;
 
     use super::*;
 
@@ -98,8 +98,8 @@ mod tests {
         use crate::{font::MathFont, Cursor};
 
         let font_file = include_bytes!("../../resources/Garamond_Math.otf");
-        let font = ttf_parser::Face::parse(font_file, 0).expect("Couldn't parse font.");
-        let math_font = TtfMathFont::new(font).expect("The font likely lacks a MATH table"); // extracts math info from font
+        let font = skrifa::FontRef::new(font_file).expect("Couldn't parse font.");
+        let math_font = SkrifaMathFont::from_font(font).expect("The font likely lacks a MATH table"); // extracts math info from font
 
 
         let mut bbox_backend = BBoxBackend::default();
@@ -143,8 +143,8 @@ mod tests {
         use crate::{layout::engine::DEFAULT_FONT_SIZE, render};
 
         let font_file = include_bytes!("../../resources/Garamond_Math.otf");
-        let font = ttf_parser::Face::parse(font_file, 0).expect("Couldn't parse font.");
-        let math_font = TtfMathFont::new(font).expect("The font likely lacks a MATH table"); // extracts math info from font
+        let font = skrifa::FontRef::new(font_file).expect("Couldn't parse font.");
+        let math_font = SkrifaMathFont::from_font(font).expect("The font likely lacks a MATH table"); // extracts math info from font
 
 
 

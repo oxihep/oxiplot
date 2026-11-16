@@ -11,7 +11,13 @@
 use std::path::Path;
 use std::sync::{Arc, OnceLock};
 
-use ab_glyph::FontVec;
+use skrifa::charmap::Charmap;
+use skrifa::instance::{LocationRef, Size};
+use skrifa::metrics::{GlyphMetrics, Metrics};
+use skrifa::outline::{DrawSettings, OutlineGlyphCollection, OutlinePen};
+use skrifa::raw::tables::kern::Subtable as KernSubtable;
+use skrifa::raw::TableProvider;
+use skrifa::{FontRef, GlyphId, MetadataProvider};
 
 use crate::error::{Error, Result};
 use crate::text::FontStyle;
@@ -49,9 +55,10 @@ pub struct FontSet {
 }
 
 struct Inner {
-    regular: FontVec,
-    bold: FontVec,
-    italic: FontVec,
+    /// The font files, checked to parse; [`FontSet::face`] reads them.
+    regular: Vec<u8>,
+    bold: Vec<u8>,
+    italic: Vec<u8>,
     /// Raw bytes of the OpenType MATH font (parsed per math run by ReX).
     #[cfg(feature = "math")]
     math: Vec<u8>,
@@ -115,8 +122,7 @@ impl FontSet {
     /// only checks that the math font parses.
     pub fn from_fonts(text: &[u8], math: &[u8]) -> Result<FontSet> {
         // Validate the math font parses as a face (ReX re-reads the bytes later).
-        ttf_parser::Face::parse(math, 0)
-            .map_err(|e| Error::Font(format!("invalid math font: {e}")))?;
+        FontRef::new(math).map_err(|e| Error::Font(format!("invalid math font: {e}")))?;
         Ok(FontSet {
             inner: Arc::new(Inner {
                 regular: load_text_font(text)?,
@@ -147,12 +153,14 @@ impl FontSet {
         Self::from_fonts(&text, &math)
     }
 
-    pub(crate) fn face(&self, style: FontStyle) -> &FontVec {
-        match style {
+    /// The text face for `style`, ready to measure and draw.
+    pub(crate) fn face(&self, style: FontStyle) -> Face<'_> {
+        let bytes = match style {
             FontStyle::Regular => &self.inner.regular,
             FontStyle::Bold => &self.inner.bold,
             FontStyle::Italic => &self.inner.italic,
-        }
+        };
+        Face::new(FontRef::new(bytes).expect("checked when the FontSet was built"))
     }
 
     #[cfg(feature = "math")]
@@ -161,9 +169,94 @@ impl FontSet {
     }
 }
 
-fn load_text_font(bytes: &[u8]) -> Result<FontVec> {
-    FontVec::try_from_vec(bytes.to_vec())
-        .map_err(|e| Error::Font(format!("invalid text font: {e}")))
+fn load_text_font(bytes: &[u8]) -> Result<Vec<u8>> {
+    let font = FontRef::new(bytes).map_err(|e| Error::Font(format!("invalid text font: {e}")))?;
+    font.head()
+        .map_err(|e| Error::Font(format!("invalid text font: {e}")))?;
+    Ok(bytes.to_vec())
+}
+
+/// A parsed text face: the character map, horizontal metrics, `kern` pairs
+/// and outlines, all in design units (y up).
+pub(crate) struct Face<'a> {
+    charmap: Charmap<'a>,
+    metrics: GlyphMetrics<'a>,
+    outlines: OutlineGlyphCollection<'a>,
+    /// Horizontal, non-variable `kern` subtables, first match wins.
+    kern: Vec<KernSubtable<'a>>,
+    /// Design units per em.
+    pub(crate) units_per_em: f32,
+    /// Ascent above the baseline, in design units (positive).
+    pub(crate) ascent: f32,
+    /// Descent, in design units (negative below the baseline).
+    pub(crate) descent: f32,
+}
+
+impl<'a> Face<'a> {
+    fn new(font: FontRef<'a>) -> Face<'a> {
+        let line = Metrics::new(&font, Size::unscaled(), LocationRef::default());
+        let kern = font
+            .kern()
+            .map(|k| {
+                k.subtables()
+                    .flatten()
+                    .filter(|st| st.is_horizontal() && !st.is_variable())
+                    .collect()
+            })
+            .unwrap_or_default();
+        Face {
+            charmap: font.charmap(),
+            metrics: font.glyph_metrics(Size::unscaled(), LocationRef::default()),
+            outlines: font.outline_glyphs(),
+            kern,
+            units_per_em: if line.units_per_em == 0 {
+                2048.0
+            } else {
+                f32::from(line.units_per_em)
+            },
+            ascent: line.ascent,
+            descent: line.descent,
+        }
+    }
+
+    /// The glyph for `c`, or `.notdef` (glyph 0) if the font has none.
+    pub(crate) fn glyph_id(&self, c: char) -> GlyphId {
+        self.charmap.map(c).unwrap_or(GlyphId::NOTDEF)
+    }
+
+    /// The advance width of `id`, in design units.
+    pub(crate) fn h_advance(&self, id: GlyphId) -> f32 {
+        self.metrics.advance_width(id).unwrap_or_default()
+    }
+
+    /// The `kern` table's adjustment between `left` and `right`, in design
+    /// units (zero without one).
+    pub(crate) fn kern(&self, left: GlyphId, right: GlyphId) -> f32 {
+        use skrifa::raw::tables::kern::SubtableKind;
+        self.kern
+            .iter()
+            .find_map(|st| match st.kind().ok()? {
+                SubtableKind::Format0(t) => t.kerning(left, right),
+                SubtableKind::Format2(t) => t.kerning(left, right),
+                SubtableKind::Format3(t) => t.kerning(left, right),
+                SubtableKind::Format1(_) => None,
+            })
+            .map_or(0.0, |k| k as f32)
+    }
+
+    /// Draw the outline of `id` into `pen`, in design units (y up). `false`
+    /// if the glyph has no outline.
+    pub(crate) fn draw(&self, id: GlyphId, pen: &mut impl OutlinePen) -> bool {
+        let Some(glyph) = self.outlines.get(id) else {
+            return false;
+        };
+        glyph
+            .draw(
+                DrawSettings::unhinted(Size::unscaled(), LocationRef::default()),
+                pen,
+            )
+            .is_ok()
+    }
 }
 
 /// A bundled text family, with STIX Two Math for `$…$` spans.

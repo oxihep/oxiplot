@@ -2,9 +2,10 @@
 //! engine, used by `oxiplot` to typeset `$…$` label spans.
 //!
 //! Upstream: KenyC/ReX at `aeccdba38f3fa54195c469319b65c423e17a77ae` (version 0.1.2),
-//! with its `unicode-math` path dependency folded in as a private module. Only the
-//! `ttf-parser` font backend is kept; the renderers, the `font` backend and the
-//! `serde` derives are removed. See `README.md` and `LICENSE-3rdparty`.
+//! with its `unicode-math` path dependency folded in as a private module. Its
+//! `ttf-parser` font backend is replaced by one over skrifa (fontations); the
+//! renderers, the `font` backend and the `serde` derives are removed. See
+//! `README.md` and `LICENSE-3rdparty`.
 //!
 //! This crate is an implementation detail of `oxiplot`. Its API is ReX's and
 //! is not covered by oxiplot's semver guarantees.
@@ -58,7 +59,7 @@ pub fn render<F : MathFont, B : Backend<F>>(formula : &str, backend : &mut B, fo
 
 #[cfg(test)]
 mod tests {
-    use crate::{font::backend::ttf_parser::TtfMathFont, layout::engine::LayoutBuilder, parser::parse};
+    use crate::{font::backend::skrifa::SkrifaMathFont, layout::engine::LayoutBuilder, parser::parse};
 
     const GARAMOND_MATH_FONT : &[u8] = include_bytes!("../resources/Garamond_Math.otf");
 
@@ -68,8 +69,8 @@ mod tests {
     /// Test for bugs like [https://github.com/KenyC/ReX/issues/6](https://github.com/KenyC/ReX/issues/6)
     #[test]
     fn all_alphanumeric_style_combinations_must_work() {
-        let font = ttf_parser::Face::parse(GARAMOND_MATH_FONT, 0).unwrap();
-        let font = TtfMathFont::new(font).unwrap();
+        let font = skrifa::FontRef::new(GARAMOND_MATH_FONT).unwrap();
+        let font = SkrifaMathFont::from_font(font).unwrap();
 
         let layout_engine = LayoutBuilder::new(&font).font_size(10.0).build();
 

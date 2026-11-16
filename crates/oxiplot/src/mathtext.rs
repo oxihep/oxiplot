@@ -10,7 +10,9 @@
 //! failing, and so does every math run in a build without the `math` feature.
 
 #[cfg(feature = "math")]
-use oxiplot_tex::font::backend::ttf_parser::TtfMathFont;
+use crate::text::PathPen;
+#[cfg(feature = "math")]
+use oxiplot_tex::font::backend::skrifa::SkrifaMathFont;
 #[cfg(feature = "math")]
 use oxiplot_tex::font::common::GlyphId;
 #[cfg(feature = "math")]
@@ -257,8 +259,7 @@ fn render_math(
     if !(size_px > 0.0 && size_px.is_finite()) {
         return None;
     }
-    let face = ttf_parser::Face::parse(fonts.math_bytes(), 0).ok()?;
-    let font = TtfMathFont::new(face).ok()?;
+    let font = SkrifaMathFont::new(fonts.math_bytes()).ok()?;
     // ReX takes the font size in points and converts it to its pixel units at
     // 96 px/in; `size_px` is already the em size in pixels (as for plain text),
     // so hand it over in points. A `$…$` span is inline math, so it is set in
@@ -296,17 +297,14 @@ struct MathCollector {
 }
 
 #[cfg(feature = "math")]
-impl FontBackend<TtfMathFont<'_>> for MathCollector {
-    fn symbol(&mut self, pos: Cursor, gid: GlyphId, scale: f64, ctx: &TtfMathFont<'_>) {
-        let m = ctx.font_matrix();
-        let mut b = OutlineToPath {
-            path: Path::new(),
-            m: (m.sx, m.ky, m.kx, m.sy, m.tx, m.ty),
-            scale: scale as f32,
-            pos: (pos.x as f32, pos.y as f32),
-        };
-        ctx.font().outline_glyph(gid.into(), &mut b);
-        if !b.path.is_empty() {
+impl FontBackend<SkrifaMathFont<'_>> for MathCollector {
+    fn symbol(&mut self, pos: Cursor, gid: GlyphId, scale: f64, ctx: &SkrifaMathFont<'_>) {
+        // Design units → ems → the run's pixels, flipped to y-down, at the
+        // glyph's position.
+        let em = f32::from(ctx.units_per_em()).recip();
+        let (scale, px, py) = (scale as f32, pos.x as f32, pos.y as f32);
+        let mut b = PathPen::new(|x, y| (scale * (em * x) + px, -scale * (em * y) + py));
+        if ctx.draw_glyph(gid, &mut b) && !b.path.is_empty() {
             self.prims.push(LocalPrim::Fill(b.path));
         }
     }
@@ -328,50 +326,4 @@ impl GraphicsBackend for MathCollector {
 }
 
 #[cfg(feature = "math")]
-impl Backend<TtfMathFont<'_>> for MathCollector {}
-
-#[cfg(feature = "math")]
-/// Maps a glyph outline (font units) through the ReX font matrix + scale + a
-/// Y-flip + the glyph position, building a [`Path`] in the math run's local frame.
-struct OutlineToPath {
-    path: Path,
-    m: (f32, f32, f32, f32, f32, f32),
-    scale: f32,
-    pos: (f32, f32),
-}
-
-#[cfg(feature = "math")]
-impl OutlineToPath {
-    fn map(&self, x: f32, y: f32) -> (f32, f32) {
-        let (sx, ky, kx, sy, tx, ty) = self.m;
-        let x1 = sx * x + kx * y + tx;
-        let y1 = ky * x + sy * y + ty;
-        (self.scale * x1 + self.pos.0, -self.scale * y1 + self.pos.1)
-    }
-}
-
-#[cfg(feature = "math")]
-impl ttf_parser::OutlineBuilder for OutlineToPath {
-    fn move_to(&mut self, x: f32, y: f32) {
-        let (a, b) = self.map(x, y);
-        self.path.segs.push(Seg::Move(a, b));
-    }
-    fn line_to(&mut self, x: f32, y: f32) {
-        let (a, b) = self.map(x, y);
-        self.path.segs.push(Seg::Line(a, b));
-    }
-    fn quad_to(&mut self, x1: f32, y1: f32, x: f32, y: f32) {
-        let (a, b) = self.map(x1, y1);
-        let (c, d) = self.map(x, y);
-        self.path.segs.push(Seg::Quad(a, b, c, d));
-    }
-    fn curve_to(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, x: f32, y: f32) {
-        let (a, b) = self.map(x1, y1);
-        let (c, d) = self.map(x2, y2);
-        let (e, f) = self.map(x, y);
-        self.path.segs.push(Seg::Cubic(a, b, c, d, e, f));
-    }
-    fn close(&mut self) {
-        self.path.segs.push(Seg::Close);
-    }
-}
+impl Backend<SkrifaMathFont<'_>> for MathCollector {}

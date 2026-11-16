@@ -28,6 +28,8 @@ pub enum FontError {
     MissingGlyphGID(GlyphId),
     /// The font lacks a MATH table.
     NoMATHTable,
+    /// The data is not a font that can be read.
+    Unreadable(String),
 }
 
 impl From<FontError> for LayoutError {
@@ -68,6 +70,8 @@ impl fmt::Display for FontError {
                 write!(f, "missing glyph with gid {}", Into::<u16>::into(gid)),
             NoMATHTable =>
                 write!(f, "no MATH tables"),
+            Unreadable(ref e) =>
+                write!(f, "unreadable font: {}", e),
         }
     }
 }

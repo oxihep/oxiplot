@@ -6,7 +6,7 @@
 //! the same size and the same glyphs and rules (in any order, each used once);
 //! a failed record must still fail. Values may differ by rounding only.
 
-use oxiplot_tex::font::backend::ttf_parser::TtfMathFont;
+use oxiplot_tex::font::backend::skrifa::SkrifaMathFont;
 use oxiplot_tex::font::common::GlyphId;
 use oxiplot_tex::layout::{engine::LayoutBuilder, Style};
 use oxiplot_tex::{Backend, Cursor, FontBackend, GraphicsBackend, Renderer, RGBA};
@@ -96,11 +96,11 @@ fn same_commands(got: &[Cmd], want: &[Cmd]) -> bool {
     })
 }
 
-fn load_font(file: &str) -> TtfMathFont<'static> {
+fn load_font(file: &str) -> SkrifaMathFont<'static> {
     let path = format!("{}/resources/{file}", env!("CARGO_MANIFEST_DIR"));
     let bytes: &'static [u8] = std::fs::read(&path).expect("read font").leak();
-    let face = ttf_parser::Face::parse(bytes, 0).expect("parse font");
-    TtfMathFont::new(face).expect("font has a MATH table")
+    let face = skrifa::FontRef::new(bytes).expect("parse font");
+    SkrifaMathFont::from_font(face).expect("font has a MATH table")
 }
 
 #[test]

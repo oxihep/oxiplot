@@ -1,2 +1,2 @@
-/// Offers an implementation of 'MathFont' for fonts derived from 'ttfparser' crate.
-pub mod ttf_parser;
+/// An implementation of 'MathFont' over skrifa / read-fonts (fontations).
+pub mod skrifa;

@@ -718,7 +718,7 @@ impl Style {
 
 #[cfg(test)]
 mod tests {
-    use crate::{dimensions::{units::{Em, FUnit, FontSize, Px, Ratio}, Unit}, font::backend::ttf_parser::TtfMathFont, layout::{engine::LayoutBuilder, Style}, parser::parse};
+    use crate::{dimensions::{units::{Em, FUnit, FontSize, Px, Ratio}, Unit}, font::backend::skrifa::SkrifaMathFont, layout::{engine::LayoutBuilder, Style}, parser::parse};
 
 
     #[test]
@@ -734,8 +734,8 @@ mod tests {
 
         // we
         let nodes = parse("1").unwrap();
-        let font = ttf_parser::Face::parse(XITS_FONT_BYTES, 0).unwrap();
-        let font = TtfMathFont::new(font).unwrap();
+        let font = skrifa::FontRef::new(XITS_FONT_BYTES).unwrap();
+        let font = SkrifaMathFont::from_font(font).unwrap();
 
         // 10pt layout
         let font_size = Unit::<FontSize>::new(10.);
