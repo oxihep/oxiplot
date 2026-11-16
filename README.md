@@ -7,6 +7,8 @@
 Pure-Rust plotting for high-energy physics: histograms, graphs and 2-D maps to
 **SVG, PNG and PDF**, with a matplotlib-like API and an mplhep-style look. No
 Python, no matplotlib, no system fonts; `$…$` labels are typeset as TeX math.
+Fonts (STIX Two by default, bundled) are read in pure Rust with
+[skrifa](https://crates.io/crates/skrifa).
 
 | Crate | What it is |
 | --- | --- |
@@ -15,7 +17,7 @@ Python, no matplotlib, no system fonts; `$…$` labels are typeset as TeX math.
 
 ```toml
 [dependencies]
-oxiplot = { git = "https://github.com/oxihep/oxiplot", tag = "v0.1.0" }
+oxiplot = { git = "https://github.com/oxihep/oxiplot", tag = "v0.2.1" }
 ```
 
 ```rust
