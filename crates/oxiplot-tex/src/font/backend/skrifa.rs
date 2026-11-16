@@ -3,8 +3,10 @@
 //! layout, GSUB's `ssty` feature for script-size glyphs, and skrifa's outlines
 //! for drawing.
 //!
-//! This replaces upstream ReX's `ttf-parser` backend; it gives the same values
-//! (same tables, same bounding boxes), so layouts do not change.
+//! This replaces upstream ReX's `ttf-parser` backend and reads the same values
+//! (same tables, same bounding boxes), except that `subscript_shift_down`
+//! comes from the font's `subscriptShiftDown` (upstream read
+//! `subscriptTopMax`).
 
 use skrifa::instance::Size;
 use skrifa::outline::{DrawSettings, OutlinePen};
@@ -138,9 +140,9 @@ impl<'a> SkrifaMathFont<'a> {
         let v = |r: &skrifa::raw::tables::math::MathValueRecord| em(f64::from(r.value().to_i16()));
 
         Some(FontConstants {
-            // As upstream ReX: `subscript_shift_down` reads `subscriptTopMax`.
-            // Kept so layouts do not change; see the oxiplot changelog.
-            subscript_shift_down: v(c.subscript_top_max()),
+            // Upstream ReX read this from `subscriptTopMax`, which set every
+            // subscript too low; it is the font's `subscriptShiftDown`.
+            subscript_shift_down: v(c.subscript_shift_down()),
             subscript_top_max: v(c.subscript_top_max()),
             subscript_baseline_drop_min: v(c.subscript_baseline_drop_min()),
 

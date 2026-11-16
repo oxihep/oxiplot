@@ -6,6 +6,18 @@ Notable changes to oxiplot and oxiplot-tex, by release. The format follows
 
 ## [Unreleased]
 
+## [0.2.1]
+
+### Fixed
+
+- **Subscripts sat too low.** oxiplot-tex (from upstream ReX) took the
+  default subscript drop from the font's `subscriptTopMax` instead of
+  `subscriptShiftDown`, so a subscript was pushed down further than the font
+  asks wherever that value decided its position. It now reads
+  `subscriptShiftDown`, as TeX and MathML do. Only vertical positions of
+  subscripts change; 16 of ReX's 154 recorded test renders were re-recorded
+  (`OXIPLOT_TEX_BLESS=1 cargo test -p oxiplot-tex --test history`).
+
 ## [0.2.0]
 
 ### Changed
