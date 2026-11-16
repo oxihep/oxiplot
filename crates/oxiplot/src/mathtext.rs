@@ -16,13 +16,13 @@ use oxiplot_tex::font::backend::skrifa::SkrifaMathFont;
 #[cfg(feature = "math")]
 use oxiplot_tex::font::common::GlyphId;
 #[cfg(feature = "math")]
-use oxiplot_tex::layout::engine::LayoutBuilder;
-#[cfg(feature = "math")]
 use oxiplot_tex::layout::Style;
+#[cfg(feature = "math")]
+use oxiplot_tex::layout::engine::LayoutBuilder;
 #[cfg(feature = "math")]
 use oxiplot_tex::parser::parse;
 #[cfg(feature = "math")]
-use oxiplot_tex::render::{Backend, Cursor, FontBackend, GraphicsBackend, Renderer, RGBA};
+use oxiplot_tex::render::{Backend, Cursor, FontBackend, GraphicsBackend, RGBA, Renderer};
 
 use crate::color::Color;
 use crate::draw::{DrawCommand, DrawGroup, Path, Pt, Seg};

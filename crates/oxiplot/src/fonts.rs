@@ -15,8 +15,8 @@ use skrifa::charmap::Charmap;
 use skrifa::instance::{LocationRef, Size};
 use skrifa::metrics::{GlyphMetrics, Metrics};
 use skrifa::outline::{DrawSettings, OutlineGlyphCollection, OutlinePen};
-use skrifa::raw::tables::kern::Subtable as KernSubtable;
 use skrifa::raw::TableProvider;
+use skrifa::raw::tables::kern::Subtable as KernSubtable;
 use skrifa::{FontRef, GlyphId, MetadataProvider};
 
 use crate::error::{Error, Result};

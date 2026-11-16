@@ -5,7 +5,7 @@
 // --------------------
 
 macro_rules! map {
-    ($($key:expr => $val:expr,)*) => {
+    ($($key:expr_2021 => $val:expr_2021,)*) => {
         &[$(($key, $val)),*]
     };
 }
@@ -15,14 +15,14 @@ macro_rules! map {
 // ----------------------
 
 macro_rules! alt {
-    ($e:expr $(,)*) => (
+    ($e:expr_2021 $(,)*) => (
         match $e? {
             Some(res) => Some(res),
             None => None,
         }
     );
 
-    ($e:expr, $($tt:tt)*) => (
+    ($e:expr_2021, $($tt:tt)*) => (
         match $e? {
             Some(res) => Some(res),
             None => {
@@ -37,7 +37,7 @@ macro_rules! alt {
 // ----------------------
 
 macro_rules! assert_close {
-    ($x:expr, $y:expr, $epsilon:expr) => {
+    ($x:expr_2021, $y:expr_2021, $epsilon:expr_2021) => {
         {
             let (x, y, epsilon) = ($x, $y, $epsilon);
             assert!(
@@ -52,7 +52,7 @@ macro_rules! assert_close {
 }
 
 macro_rules! should_fail {
-    ($errs:ident, $func:ident, $iter:expr) => ({
+    ($errs:ident, $func:ident, $iter:expr_2021) => ({
         for item in $iter.iter() {
             if let Ok(_) = $func(item) {
                 $errs.push(format!("{:?} - should have errored.\n", item));
@@ -62,7 +62,7 @@ macro_rules! should_fail {
 }
 
 macro_rules! should_pass {
-    ($errs:ident, $func:ident, $iter:expr) => ({
+    ($errs:ident, $func:ident, $iter:expr_2021) => ({
         for item in $iter.iter() {
             if let Err(s) = $func(item) {
                 $errs.push(format!("{:?} - should have passed.\n\tError: {:?}\n", item, s));
@@ -72,7 +72,7 @@ macro_rules! should_pass {
 }
 
 macro_rules! should_equate {
-    ($errs:ident, $func:ident, $iter:expr) => ({
+    ($errs:ident, $func:ident, $iter:expr_2021) => ({
         for &(l, r) in $iter.iter() {
             let l_res = $func(l);
             let r_res = $func(r);
@@ -85,7 +85,7 @@ macro_rules! should_equate {
 }
 
 macro_rules! should_differ {
-    ($errs:ident, $func:ident, $iter:expr) => ({
+    ($errs:ident, $func:ident, $iter:expr_2021) => ({
         for &(l, r) in $iter.iter() {
             let l_res = $func(l);
             let r_res = $func(r);
@@ -112,8 +112,8 @@ macro_rules! display_errors {
 // from the max_min_macros crate by Emanuel Claesson
 
 macro_rules! min {
-    ($x: expr) => ($x);
-    ($x: expr, $($xs: expr), +) => {
+    ($x: expr_2021) => ($x);
+    ($x: expr_2021, $($xs: expr_2021), +) => {
         {
             Unit::min($x, min!($($xs), +))
         }
@@ -121,8 +121,8 @@ macro_rules! min {
 }
 
 macro_rules! max {
-    ($x: expr) => ($x);
-    ($x: expr, $($xs: expr), +) => {
+    ($x: expr_2021) => ($x);
+    ($x: expr_2021, $($xs: expr_2021), +) => {
         {
             Unit::max($x, max!($($xs), +))
         }

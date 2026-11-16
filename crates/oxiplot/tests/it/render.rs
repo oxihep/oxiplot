@@ -9,8 +9,8 @@ use oxiplot::Norm;
 #[cfg(feature = "png")]
 use oxiplot::SaveOpts;
 use oxiplot::{
-    ratio_subplots, subplots, subplots_grid, Axes, Binned1D, Binned2D, Color, CurveOpts, Error,
-    ErrorbarOpts, FontSet, Hist2dOpts, HistOpts, HistType, PdfPages, Points, Style,
+    Axes, Binned1D, Binned2D, Color, CurveOpts, Error, ErrorbarOpts, FontSet, Hist2dOpts, HistOpts,
+    HistType, PdfPages, Points, Style, ratio_subplots, subplots, subplots_grid,
 };
 
 // --- deterministic fixtures (a tiny LCG → reproducible bytes, no rng dep) ---
@@ -244,9 +244,10 @@ fn dpi_scales_the_png_raster() {
     assert_eq!(hi.0, base.0 * 2, "width doubles at 2x dpi");
     assert_eq!(hi.1, base.1 * 2, "height doubles at 2x dpi");
     // Vector formats are resolution-independent: the SVG viewBox is unchanged.
-    assert!(ax
-        .to_svg_string()
-        .contains(&format!("viewBox=\"0 0 {} {}\"", base.0, base.1)));
+    assert!(
+        ax.to_svg_string()
+            .contains(&format!("viewBox=\"0 0 {} {}\"", base.0, base.1))
+    );
 }
 
 #[test]
@@ -365,10 +366,11 @@ fn graph_profile_plot_and_function_render() {
 
     let mut ax = Axes::new();
     ax.profile(&profile());
-    assert!(ax
-        .to_png_bytes(SaveOpts::new())
-        .unwrap()
-        .starts_with(b"\x89PNG"));
+    assert!(
+        ax.to_png_bytes(SaveOpts::new())
+            .unwrap()
+            .starts_with(b"\x89PNG")
+    );
 
     let xs: Vec<f64> = (0..50).map(|i| i as f64 * 0.2).collect();
     let ys: Vec<f64> = xs.iter().map(|x| x.sin()).collect();
@@ -513,10 +515,11 @@ fn figure_in_memory_render_all_formats() {
     let (fig, mut ax) = subplots();
     ax.hist(&gauss_hist());
     let fig = fig.with_axes([ax]);
-    assert!(fig
-        .to_png_bytes(SaveOpts::new())
-        .unwrap()
-        .starts_with(b"\x89PNG"));
+    assert!(
+        fig.to_png_bytes(SaveOpts::new())
+            .unwrap()
+            .starts_with(b"\x89PNG")
+    );
     assert!(fig.to_svg_string().starts_with("<svg"));
     assert!(fig.to_pdf_bytes().starts_with(b"%PDF-1.4"));
 }
@@ -528,10 +531,11 @@ fn figure_in_memory_render_all_formats() {
 fn empty_axes_renders_without_panicking() {
     let ax = Axes::new();
     assert!(ax.to_svg_string().contains("<svg"));
-    assert!(ax
-        .to_png_bytes(SaveOpts::new())
-        .unwrap()
-        .starts_with(b"\x89PNG"));
+    assert!(
+        ax.to_png_bytes(SaveOpts::new())
+            .unwrap()
+            .starts_with(b"\x89PNG")
+    );
     assert!(ax.to_pdf_bytes().starts_with(b"%PDF-1.4"));
 }
 

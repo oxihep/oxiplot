@@ -64,14 +64,14 @@ impl<'a, F> VBox<'a, F> {
 }
 
 macro_rules! vbox {
-    (offset: $offset:expr; $($node:expr),*) => ({
+    (offset: $offset:expr_2021; $($node:expr_2021),*) => ({
         let mut _vbox = builders::VBox::new();
         $( _vbox.add_node($node); )*
         _vbox.set_offset($offset);
         _vbox.build()
     });
 
-    ( $($node:expr),* ) => ({
+    ( $($node:expr_2021),* ) => ({
         let mut _vbox = builders::VBox::new();
         $( _vbox.add_node($node); )*
         _vbox.build()
@@ -202,14 +202,14 @@ impl<'a, F> Grid<'a, F> {
 }
 
 macro_rules! hbox {
-    (offset: $offset:expr; $($node:expr),*) => ({
+    (offset: $offset:expr_2021; $($node:expr_2021),*) => ({
         let mut _hbox = builders::HBox::new();
         $( _hbox.add_node($node); )*
         _hbox.set_offset($offset);
         _hbox.build()
     });
 
-    (align: $align:expr; width: $width:expr; $($node:expr),*) => ({
+    (align: $align:expr_2021; width: $width:expr_2021; $($node:expr_2021),*) => ({
         let mut _hbox = builders::HBox::new();
         let align = $align;
         let width = $width;
@@ -219,7 +219,7 @@ macro_rules! hbox {
         _hbox.build()
     });
 
-    ( $($node:expr),* ) => ({
+    ( $($node:expr_2021),* ) => ({
         let mut _hbox = builders::HBox::new();
         $( _hbox.add_node($node); )*
         _hbox.build()
@@ -227,11 +227,11 @@ macro_rules! hbox {
 }
 
 macro_rules! rule {
-    (width: $width:expr, height: $height:expr) => (
+    (width: $width:expr_2021, height: $height:expr_2021) => (
         rule!(width: $width, height: $height, depth: Unit::ZERO)
     );
 
-    (width: $width:expr, height: $height:expr, depth: $depth:expr) => (
+    (width: $width:expr_2021, height: $height:expr_2021, depth: $depth:expr_2021) => (
         LayoutNode {
             width:  $width,
             height: $height,

@@ -6,6 +6,13 @@ Notable changes to oxiplot and oxiplot-tex, by release. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- **Rust 1.100 and edition 2024.** The minimum supported Rust version
+  (`rust-version`) moves from 1.95 to 1.100, the current stable release that
+  CI already builds with, and the crates move to the 2024 edition (migrated
+  with `cargo fix --edition`; formatting follows the 2024 style).
+
 ## [0.2.1]
 
 ### Fixed

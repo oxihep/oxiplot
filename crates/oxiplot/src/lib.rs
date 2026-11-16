@@ -118,8 +118,8 @@ pub use color::{Color, ParseColorError, TAB10};
 pub use data::{Binned1D, Binned2D, Hist1dData, Hist2dData, PointData, Points};
 pub use error::{Error, Result};
 pub use figure::{
-    ratio_subplots, ratio_subplots_with, subplots, subplots_grid, subplots_grid_with,
-    subplots_with, Figure, PdfPages, SaveOpts,
+    Figure, PdfPages, SaveOpts, ratio_subplots, ratio_subplots_with, subplots, subplots_grid,
+    subplots_grid_with, subplots_with,
 };
 pub use fonts::FontSet;
 pub use gridspec::GridSpec;
@@ -127,7 +127,7 @@ pub use norm::Norm;
 #[cfg(feature = "fit")]
 pub use statbox::{Corner, StatBox};
 pub use style::{Sides, Style, TickDir};
-pub use timeaxis::{format_time, TimeFormat};
+pub use timeaxis::{TimeFormat, format_time};
 
 #[cfg(test)]
 mod tests {
@@ -553,10 +553,11 @@ mod tests {
         );
         // Glyph outlines for the stripped source text, and no TeX rules.
         assert!(g.cmds.iter().any(|c| matches!(c, DrawCommand::Path { .. })));
-        assert!(!g
-            .cmds
-            .iter()
-            .any(|c| matches!(c, DrawCommand::Polygon { .. })));
+        assert!(
+            !g.cmds
+                .iter()
+                .any(|c| matches!(c, DrawCommand::Polygon { .. }))
+        );
     }
 
     #[test]

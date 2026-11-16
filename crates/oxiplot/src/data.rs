@@ -325,10 +325,12 @@ mod tests {
     #[test]
     fn lengths_are_checked() {
         assert!(Binned1D::new(vec![0.0, 1.0], vec![1.0, 2.0]).is_err());
-        assert!(Binned1D::new(vec![0.0, 1.0], vec![1.0])
-            .unwrap()
-            .with_errors(vec![])
-            .is_err());
+        assert!(
+            Binned1D::new(vec![0.0, 1.0], vec![1.0])
+                .unwrap()
+                .with_errors(vec![])
+                .is_err()
+        );
         assert!(Binned2D::new(vec![0.0, 1.0], vec![0.0, 1.0, 2.0], vec![vec![1.0]]).is_err());
         assert!(Points::new(vec![1.0], vec![]).is_err());
         let p = Points::new(vec![1.0, 2.0], vec![3.0, 4.0]).unwrap();
