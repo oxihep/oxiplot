@@ -3,7 +3,7 @@
 #[deny(missing_docs)]
 pub mod kerning;
 
-/// Different implementations of the 'MathFont' trait for various font parsing crates, like 'ttf-parser'.
+/// Different implementations of the 'MathFont' trait for various font parsing crates, like skrifa (fontations).
 #[deny(missing_docs)]
 pub mod backend;
 /// Contains types and utilities related to fonts.

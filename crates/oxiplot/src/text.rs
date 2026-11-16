@@ -4,7 +4,7 @@
 //! the raster (tiny-skia) and SVG renderers draw identical glyphs — the output
 //! is self-contained and font-independent on the viewer's side.
 
-use ab_glyph::{Font, OutlineCurve};
+use skrifa::outline::OutlinePen;
 
 use crate::color::Color;
 use crate::draw::{DrawCommand, Path, Pt, Seg};
@@ -75,22 +75,21 @@ impl TextExtents {
 #[must_use]
 pub fn measure(fonts: &FontSet, text: &str, size_px: f32, style: FontStyle) -> TextExtents {
     let font = fonts.face(style);
-    let upem = font.units_per_em().unwrap_or(2048.0);
-    let f = size_px / upem;
+    let f = size_px / font.units_per_em;
     let mut width = 0.0;
     let mut prev = None;
     for c in text.chars() {
         let id = font.glyph_id(c);
         if let Some(p) = prev {
-            width += font.kern_unscaled(p, id) * f;
+            width += font.kern(p, id) * f;
         }
-        width += font.h_advance_unscaled(id) * f;
+        width += font.h_advance(id) * f;
         prev = Some(id);
     }
     TextExtents {
         width,
-        ascent: font.ascent_unscaled() * f,
-        descent: -font.descent_unscaled() * f,
+        ascent: font.ascent * f,
+        descent: -font.descent * f,
     }
 }
 
@@ -114,8 +113,7 @@ pub fn layout(
     rotation_deg: f32,
 ) -> Vec<DrawCommand> {
     let font = fonts.face(style);
-    let upem = font.units_per_em().unwrap_or(2048.0);
-    let f = size_px / upem;
+    let f = size_px / font.units_per_em;
     let ext = measure(fonts, text, size_px, style);
 
     // Pen start (local x of the first glyph origin) from the horizontal anchor.
@@ -140,23 +138,19 @@ pub fn layout(
     for c in text.chars() {
         let id = font.glyph_id(c);
         if let Some(p) = prev {
-            pen += font.kern_unscaled(p, id) * f;
+            pen += font.kern(p, id) * f;
         }
-        if let Some(outline) = font.outline(id) {
-            let pen_now = pen;
-            // Map a font-unit point (y-up) to local frame (y-down) then to screen.
-            let path = build_glyph_path(&outline.curves, |gx, gy| {
-                to_screen(pen_now + gx * f, baseline - gy * f)
+        let pen_now = pen;
+        // Map a font-unit point (y-up) to local frame (y-down) then to screen.
+        let mut glyph = PathPen::new(|gx, gy| to_screen(pen_now + gx * f, baseline - gy * f));
+        if font.draw(id, &mut glyph) && !glyph.path.is_empty() {
+            cmds.push(DrawCommand::Path {
+                path: glyph.path,
+                fill: Some(color),
+                stroke: None,
             });
-            if !path.is_empty() {
-                cmds.push(DrawCommand::Path {
-                    path,
-                    fill: Some(color),
-                    stroke: None,
-                });
-            }
         }
-        pen += font.h_advance_unscaled(id) * f;
+        pen += font.h_advance(id) * f;
         prev = Some(id);
     }
     cmds
@@ -171,77 +165,63 @@ pub(crate) fn glyph_paths_local(
     style: FontStyle,
 ) -> Vec<Path> {
     let font = fonts.face(style);
-    let upem = font.units_per_em().unwrap_or(2048.0);
-    let f = size_px / upem;
+    let f = size_px / font.units_per_em;
     let mut pen = 0.0;
     let mut prev = None;
     let mut out = Vec::new();
     for c in text.chars() {
         let id = font.glyph_id(c);
         if let Some(p) = prev {
-            pen += font.kern_unscaled(p, id) * f;
+            pen += font.kern(p, id) * f;
         }
-        if let Some(outline) = font.outline(id) {
-            let pen_now = pen;
-            let path = build_glyph_path(&outline.curves, |gx, gy| (pen_now + gx * f, -gy * f));
-            if !path.is_empty() {
-                out.push(path);
-            }
+        let pen_now = pen;
+        let mut glyph = PathPen::new(|gx, gy| (pen_now + gx * f, -gy * f));
+        if font.draw(id, &mut glyph) && !glyph.path.is_empty() {
+            out.push(glyph.path);
         }
-        pen += font.h_advance_unscaled(id) * f;
+        pen += font.h_advance(id) * f;
         prev = Some(id);
     }
     out
 }
 
-/// Build a closed [`Path`] from glyph outline curves, mapping each font-unit
-/// point through `map`. ab_glyph emits curves contour-by-contour; a jump in the
-/// start point marks a new contour, so the previous one is closed and re-moved.
-fn build_glyph_path(curves: &[OutlineCurve], map: impl Fn(f32, f32) -> Pt) -> Path {
-    let mut path = Path::new();
-    let mut open = false;
-    let mut last_end: Option<ab_glyph::Point> = None;
-    for curve in curves {
-        let start = curve_start(curve);
-        if last_end != Some(start) {
-            if open {
-                path.segs.push(Seg::Close);
-            }
-            let (sx, sy) = map(start.x, start.y);
-            path.segs.push(Seg::Move(sx, sy));
-            open = true;
-        }
-        match curve {
-            OutlineCurve::Line(_, p1) => {
-                let (px, py) = map(p1.x, p1.y);
-                path.segs.push(Seg::Line(px, py));
-                last_end = Some(*p1);
-            }
-            OutlineCurve::Quad(_, c, p1) => {
-                let (cx, cy) = map(c.x, c.y);
-                let (px, py) = map(p1.x, p1.y);
-                path.segs.push(Seg::Quad(cx, cy, px, py));
-                last_end = Some(*p1);
-            }
-            OutlineCurve::Cubic(_, c1, c2, p1) => {
-                let (c1x, c1y) = map(c1.x, c1.y);
-                let (c2x, c2y) = map(c2.x, c2.y);
-                let (px, py) = map(p1.x, p1.y);
-                path.segs.push(Seg::Cubic(c1x, c1y, c2x, c2y, px, py));
-                last_end = Some(*p1);
-            }
-        }
-    }
-    if open {
-        path.segs.push(Seg::Close);
-    }
-    path
+/// An [`OutlinePen`] building a [`Path`], mapping each font-unit point
+/// (y up) through `map`.
+pub(crate) struct PathPen<F: Fn(f32, f32) -> Pt> {
+    pub(crate) path: Path,
+    map: F,
 }
 
-fn curve_start(curve: &OutlineCurve) -> ab_glyph::Point {
-    match curve {
-        OutlineCurve::Line(p0, _)
-        | OutlineCurve::Quad(p0, _, _)
-        | OutlineCurve::Cubic(p0, _, _, _) => *p0,
+impl<F: Fn(f32, f32) -> Pt> PathPen<F> {
+    pub(crate) fn new(map: F) -> Self {
+        PathPen {
+            path: Path::new(),
+            map,
+        }
+    }
+}
+
+impl<F: Fn(f32, f32) -> Pt> OutlinePen for PathPen<F> {
+    fn move_to(&mut self, x: f32, y: f32) {
+        let (a, b) = (self.map)(x, y);
+        self.path.segs.push(Seg::Move(a, b));
+    }
+    fn line_to(&mut self, x: f32, y: f32) {
+        let (a, b) = (self.map)(x, y);
+        self.path.segs.push(Seg::Line(a, b));
+    }
+    fn quad_to(&mut self, cx0: f32, cy0: f32, x: f32, y: f32) {
+        let (a, b) = (self.map)(cx0, cy0);
+        let (c, d) = (self.map)(x, y);
+        self.path.segs.push(Seg::Quad(a, b, c, d));
+    }
+    fn curve_to(&mut self, cx0: f32, cy0: f32, cx1: f32, cy1: f32, x: f32, y: f32) {
+        let (a, b) = (self.map)(cx0, cy0);
+        let (c, d) = (self.map)(cx1, cy1);
+        let (e, f) = (self.map)(x, y);
+        self.path.segs.push(Seg::Cubic(a, b, c, d, e, f));
+    }
+    fn close(&mut self) {
+        self.path.segs.push(Seg::Close);
     }
 }

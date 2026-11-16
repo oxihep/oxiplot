@@ -6,6 +6,28 @@ Notable changes to oxiplot and oxiplot-tex, by release. The format follows
 
 ## [Unreleased]
 
+## [0.2.0]
+
+### Changed
+
+- **Fonts are read with skrifa (Google Fonts' fontations) instead of
+  ttf-parser and ab_glyph.** ttf-parser is unmaintained (RUSTSEC-2026-0192),
+  and ab_glyph depends on it. Text, tick labels and `$…$` math draw the same:
+  PNG output is pixel-identical on the bundled STIX Two and DejaVu fonts, and
+  SVG paths lose only a redundant zero-length segment before each `Z`.
+  `FontSet` is unchanged.
+- **Breaking (oxiplot-tex):** the math font backend is
+  `oxiplot_tex::font::backend::skrifa::SkrifaMathFont` (built from font
+  bytes or a `skrifa::FontRef`); `font::backend::ttf_parser::TtfMathFont`
+  is gone. oxiplot-tex is internal to oxiplot and has no stability promise,
+  but its version moves with oxiplot's.
+
+### Fixed
+
+- oxiplot-tex reads an `ssty` single substitution (GSUB format 2) through
+  its coverage index; upstream ReX searched the substitute array instead,
+  which could return the wrong glyph for a script-size form.
+
 ## [0.1.1]
 
 ### Changed

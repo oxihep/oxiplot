@@ -17,8 +17,9 @@ layout engine that `oxiplot` uses to typeset `$…$` spans in labels.
 
 - The renderers (`src/render/{cairo,femtovg,pathfinder,raqote,tinyskia}.rs`);
   oxiplot draws through its own `Backend`.
-- The `font` crate backend (`src/font/backend/font.rs`); only the
-  `ttf-parser` backend is kept, and it is always on.
+- The `font` crate backend (`src/font/backend/font.rs`) and the `ttf-parser`
+  backend (`src/font/backend/ttf_parser.rs`), which is unmaintained
+  (RUSTSEC-2026-0192). A skrifa backend replaces them (see below).
 - The `serde` derives and the `log` dependency (both unused).
 - unicode-math's build script and its `nom`/`regex` build dependencies: its
   output is committed as `src/unicode_math/symbols.rs` and
@@ -39,13 +40,24 @@ Everything else under `src/` is byte-identical to upstream (with
 - `src/dimensions.rs`, `src/layout/mod.rs`, `src/parser/color.rs`: the
   `#[derive(Serialize, Deserialize)]` lines are removed.
 - `src/dimensions.rs`: the doctest imports `oxiplot_tex` instead of `rex`.
-- `src/font/backend.rs`: only `pub mod ttf_parser;` remains, without its
-  feature gate.
-- `src/font/common.rs`: the `font`-crate impls and the feature gates on the
-  `ttf-parser` impls are removed, as is an unused `std::convert` import.
+- `src/font/backend.rs`: only `pub mod skrifa;` remains, without a feature
+  gate.
+- `src/font/backend/skrifa.rs` (new): `SkrifaMathFont`, the `MathFont` over
+  skrifa and its re-exported read-fonts. It reads the same tables as
+  upstream's `TtfMathFont` (MATH constants, italics, accents, kerns, variants
+  and assemblies; GSUB `ssty`) and measures glyph boxes the same way
+  (every outline point, control points included), so layouts do not change.
+  It keeps upstream's reading of `subscript_shift_down` from
+  `subscriptTopMax`. Its `ssty` single substitutions use the coverage index
+  (upstream searched the substitute array). The `construct_glyphs` tests are
+  upstream's, on the new types.
+- `src/font/common.rs`: the `font`-crate and `ttf-parser` impls are removed,
+  as is an unused `std::convert` import.
+- `src/error.rs`: `FontError::Unreadable` for data that is not a font.
 - `src/render/mod.rs`: the five feature-gated renderer modules are removed.
 - `src/render/bbox.rs`: the two `ttfparser-fontparser` feature gates are
-  removed.
+  removed; its tests, `src/lib.rs`'s, `src/layout/mod.rs`'s and
+  `tests/{arrays,history}.rs` build the font with `SkrifaMathFont`.
 - `unicode_math::` paths become `crate::unicode_math::` in
   `src/font/{mod,style}.rs`, `src/layout/engine.rs` and
   `src/parser/{mod,environments,control_sequence,symbols}.rs`.

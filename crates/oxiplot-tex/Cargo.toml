@@ -17,8 +17,9 @@ description = "TeX math layout for oxiplot: a trimmed, vendored copy of the ReX 
 include = ["/src/**/*.rs", "/README.md", "/LICENSE-3rdparty"]
 
 [dependencies]
-# ReX uses `ttf_parser::{gsub, math}` (the `opentype-layout` feature).
-ttf-parser = { workspace = true, features = ["opentype-layout"] }
+# Font parsing (fontations): the MATH and GSUB tables through its re-exported
+# read-fonts, glyph outlines and metrics through skrifa.
+skrifa = { workspace = true }
 
 [dev-dependencies]
 # The upstream parser snapshot tests, unchanged.

@@ -3,19 +3,19 @@
 //! matrix, and a debug build panicked when the column format and the widest row
 //! disagreed.
 
-use oxiplot_tex::font::backend::ttf_parser::TtfMathFont;
+use oxiplot_tex::font::backend::skrifa::SkrifaMathFont;
 use oxiplot_tex::layout::engine::LayoutBuilder;
 use oxiplot_tex::parser::error::ParseError;
 use oxiplot_tex::parser::parse;
 
-fn font() -> TtfMathFont<'static> {
+fn font() -> SkrifaMathFont<'static> {
     let path = format!("{}/resources/XITS_Math.otf", env!("CARGO_MANIFEST_DIR"));
     let bytes: &'static [u8] = std::fs::read(path).expect("read font").leak();
-    TtfMathFont::new(ttf_parser::Face::parse(bytes, 0).expect("parse font")).expect("MATH table")
+    SkrifaMathFont::from_font(skrifa::FontRef::new(bytes).expect("parse font")).expect("MATH table")
 }
 
 /// The laid-out width of `tex`.
-fn width(font: &TtfMathFont<'_>, tex: &str) -> f64 {
+fn width(font: &SkrifaMathFont<'_>, tex: &str) -> f64 {
     let nodes = parse(tex).expect("parse");
     let layout = LayoutBuilder::new(font)
         .font_size(12.0)
