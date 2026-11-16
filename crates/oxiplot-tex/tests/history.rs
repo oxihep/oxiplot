@@ -5,6 +5,12 @@
 //! through a backend that records its draw calls. A successful record must give
 //! the same size and the same glyphs and rules (in any order, each used once);
 //! a failed record must still fail. Values may differ by rounding only.
+//!
+//! The records are upstream's, except where oxiplot-tex fixed upstream on
+//! purpose: the subscripts of 16 records were re-recorded when
+//! `subscript_shift_down` stopped reading `subscriptTopMax`. To re-record
+//! after such a deliberate change, run with `OXIPLOT_TEX_BLESS=1`: records
+//! that differ are rewritten from the current output (look at the diff).
 
 use oxiplot_tex::font::backend::skrifa::SkrifaMathFont;
 use oxiplot_tex::font::common::GlyphId;
@@ -26,6 +32,14 @@ impl Cmd {
             "S" => Cmd::Symbol(num(1), num(2), f[3].parse().expect("glyph id"), num(4)),
             "R" => Cmd::Rule(num(1), num(2), num(3), num(4)),
             other => panic!("unknown command {other:?}"),
+        }
+    }
+
+    /// The record line for this command.
+    fn line(&self) -> String {
+        match *self {
+            Cmd::Symbol(x, y, g, s) => format!("S {x:?} {y:?} {g} {s:?}"),
+            Cmd::Rule(x, y, w, h) => format!("R {x:?} {y:?} {w:?} {h:?}"),
         }
     }
 
@@ -121,6 +135,8 @@ fn renders_match_the_upstream_history() {
     let mut lines = text.lines();
     let (mut renders, mut errors) = (0, 0);
     let mut mismatches = Vec::new();
+    let bless = std::env::var_os("OXIPLOT_TEX_BLESS").is_some();
+    let mut out: Vec<String> = Vec::new();
 
     while let Some(header) = lines.next() {
         let f: Vec<&str> = header.split(' ').collect();
@@ -135,6 +151,7 @@ fn renders_match_the_upstream_history() {
 
         match f[0] {
             "ERR" => {
+                out.push(header.to_owned());
                 errors += 1;
                 if result.is_ok() {
                     mismatches.push(format!("{tex}: now renders, was an error"));
@@ -156,6 +173,7 @@ fn renders_match_the_upstream_history() {
                 let size = layout.size();
                 let mut rec = Recorder::default();
                 Renderer::new().render(&layout, &mut rec);
+                let before = mismatches.len();
                 if !close(size.width, width) || !close(size.height - size.depth, height) {
                     mismatches.push(format!(
                         "{tex}: size {} x {}, want {width} x {height}",
@@ -169,12 +187,32 @@ fn renders_match_the_upstream_history() {
                         want.len()
                     ));
                 }
+                if mismatches.len() == before {
+                    out.push(header.to_owned());
+                    out.extend(want.iter().map(Cmd::line));
+                } else {
+                    out.push(format!(
+                        "EQ {} {} {:?} {:?}",
+                        f[1],
+                        f[2],
+                        size.width,
+                        size.height - size.depth
+                    ));
+                    out.extend(rec.0.iter().map(Cmd::line));
+                }
+                out.push("END".to_owned());
             }
             other => panic!("unknown record {other:?}"),
         }
     }
 
     assert!(renders > 0, "no records read");
+    if bless {
+        let path = format!("{}/tests/history.txt", env!("CARGO_MANIFEST_DIR"));
+        std::fs::write(path, out.join("\n") + "\n").expect("write history");
+        eprintln!("re-recorded {} history records", mismatches.len());
+        return;
+    }
     for m in &mismatches {
         eprintln!("MISMATCH {m}");
     }

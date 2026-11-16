@@ -47,13 +47,17 @@ Everything else under `src/` is byte-identical to upstream (with
   upstream's `TtfMathFont` (MATH constants, italics, accents, kerns, variants
   and assemblies; GSUB `ssty`) and measures glyph boxes the same way
   (every outline point, control points included), so layouts do not change.
-  It keeps upstream's reading of `subscript_shift_down` from
-  `subscriptTopMax`. Its `ssty` single substitutions use the coverage index
+  `subscript_shift_down` is read from `subscriptShiftDown` (upstream read
+  `subscriptTopMax`, which set subscripts too low), and its `ssty` single
+  substitutions use the coverage index
   (upstream searched the substitute array). The `construct_glyphs` tests are
   upstream's, on the new types.
 - `src/font/common.rs`: the `font`-crate and `ttf-parser` impls are removed,
   as is an unused `std::convert` import.
 - `src/error.rs`: `FontError::Unreadable` for data that is not a font.
+- `tests/history.rs`: `OXIPLOT_TEX_BLESS=1` re-records records that differ.
+  16 records were re-recorded for the `subscript_shift_down` fix (only the
+  vertical positions of their scripts changed); the rest are upstream's.
 - `src/render/mod.rs`: the five feature-gated renderer modules are removed.
 - `src/render/bbox.rs`: the two `ttfparser-fontparser` feature gates are
   removed; its tests, `src/lib.rs`'s, `src/layout/mod.rs`'s and
