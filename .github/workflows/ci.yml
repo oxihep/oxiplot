@@ -17,7 +17,7 @@ jobs:
     name: test / lint / fmt
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Install the pinned stable toolchain
         uses: dtolnay/rust-toolchain@master
@@ -41,7 +41,7 @@ jobs:
     name: feature combinations
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Install the pinned stable toolchain
         uses: dtolnay/rust-toolchain@master
@@ -74,7 +74,7 @@ jobs:
     name: minimum Rust version (1.95)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Install the declared rust-version
         uses: dtolnay/rust-toolchain@master
@@ -93,7 +93,7 @@ jobs:
     env:
       RUSTDOCFLAGS: -D warnings
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Install the pinned stable toolchain
         uses: dtolnay/rust-toolchain@master
@@ -112,7 +112,7 @@ jobs:
     # plus git only from github.com/oxihep). Configured in deny.toml.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - uses: EmbarkStudios/cargo-deny-action@v2
         with:
@@ -124,7 +124,7 @@ jobs:
     # and their types stop matching. See oxiroot's RELEASING.md.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Install the pinned stable toolchain
         uses: dtolnay/rust-toolchain@master
