@@ -845,9 +845,17 @@ impl Axes {
             _ => sane_range_or(self.ylim.or(self.data_ylim).unwrap_or_else(|| match auto {
                 // Histograms stand on y = 0 (a sticky edge, as in matplotlib):
                 // pad only the side(s) away from zero, so negative bins (a
-                // weighted or subtracted histogram) stay in view.
+                // weighted or subtracted histogram) stay in view. Only a
+                // negative *value* takes the range below 0: an error bar
+                // reaching below an empty bin's count does not.
                 Some(b) if self.y_from_zero => {
-                    let (lo, hi) = (b.ymin.min(0.0), b.ymax.max(0.0));
+                    let negative = self
+                        .artists
+                        .iter()
+                        .filter_map(Artist::value_ymin)
+                        .any(|v| v < 0.0);
+                    let lo = if negative { b.ymin.min(0.0) } else { 0.0 };
+                    let (lo, hi) = (lo, b.ymax.max(0.0));
                     let pad = (hi - lo).max(1.0) * m;
                     (
                         if lo < 0.0 { lo - pad } else { 0.0 },
@@ -1795,6 +1803,36 @@ mod tests {
         ax.hist(&hist(&[0.0, 1.0, 2.0], &[-5.0, -3.0]));
         let (lo, hi) = ax.resolved_ylim();
         assert!(lo < -5.0 && hi == 0.0, "({lo}, {hi})");
+    }
+
+    #[test]
+    fn error_bars_below_zero_do_not_lower_a_histogram_axis() {
+        // Counts near 0 with error bars reaching below it: the axis still
+        // stands on 0.
+        let mut ax = Axes::new();
+        ax.hist(&hist(&[0.0, 1.0, 2.0], &[0.0, 10.0]));
+        ax.errorbar(
+            &Points::new(vec![0.5, 1.5], vec![0.0, 9.0])
+                .unwrap()
+                .with_y_errors(vec![1.5, 3.0])
+                .unwrap(),
+        );
+        assert_eq!(ax.resolved_ylim().0, 0.0);
+        // A step histogram's own error bars likewise.
+        let mut ax = Axes::new();
+        ax.hist_with(
+            &hist(&[0.0, 1.0, 2.0], &[0.5, 10.0]),
+            HistOpts::new().yerr(),
+        );
+        assert_eq!(ax.resolved_ylim().0, 0.0);
+        // A negative value does take it below, error bars and all.
+        let mut ax = Axes::new();
+        ax.hist_with(
+            &hist(&[0.0, 1.0, 2.0], &[-2.0, 10.0]),
+            HistOpts::new().yerr(),
+        );
+        let lo = ax.resolved_ylim().0;
+        assert!(lo < -2.0 - 2f64.sqrt(), "{lo}");
     }
 
     #[test]

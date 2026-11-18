@@ -704,6 +704,21 @@ impl Artist {
         }
     }
 
+    /// The smallest finite central y value (a bin's content, a point's y),
+    /// leaving out error bars; `None` for a heatmap or no finite values.
+    pub(crate) fn value_ymin(&self) -> Option<f64> {
+        let ys: &[f64] = match self {
+            Artist::Line(a) => &a.ys,
+            Artist::Step(a) => &a.values,
+            Artist::Errorbar(a) => &a.ys,
+            Artist::Mesh(_) => return None,
+        };
+        ys.iter()
+            .copied()
+            .filter(|v| v.is_finite())
+            .reduce(f64::min)
+    }
+
     /// Points along the artist, in pixels, for judging how much of it a box
     /// would hide (the legend's [`Loc::Best`](crate::Loc::Best)). Outlines
     /// are sampled along their length, so a wide flat bin still counts.

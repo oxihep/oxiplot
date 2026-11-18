@@ -6,6 +6,16 @@ Notable changes to oxiplot and oxiplot-tex, by release. The format follows
 
 ## [Unreleased]
 
+## [0.3.1]
+
+### Fixed
+
+- **Error bars pulled a histogram's y axis below zero.** 0.3.0 let negative
+  bins extend the range below 0, but error bars reaching below an empty
+  bin's count (data points at 0 with a ±1 bar, say) did so too, leaving a
+  gap under the histogram. Only a negative bin content or point now takes
+  the range below 0.
+
 ## [0.3.0]
 
 Several defaults change how an existing plot looks (hence 0.3): the legend
