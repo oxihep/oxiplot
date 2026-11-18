@@ -8,8 +8,8 @@ Notable changes to oxiplot and oxiplot-tex, by release. The format follows
 
 ## [0.4.2]
 
-The tag `v0.4.1` was cut by mistake on the 0.4.0 commit (its manifest says
-0.4.0); do not use it. 0.4.2 is the release with this fix.
+There is no 0.4.1: a `v0.4.1` tag was cut by mistake on the 0.4.0 commit
+and has been deleted. 0.4.2 is the release with this fix.
 
 ### Fixed
 
