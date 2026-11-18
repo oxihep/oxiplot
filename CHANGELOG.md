@@ -6,12 +6,19 @@ Notable changes to oxiplot and oxiplot-tex, by release. The format follows
 
 ## [Unreleased]
 
+## [0.4.3]
+
 ### Fixed
 
 - **The legend's `Loc::Best` could sit on a filled histogram.** It counted
   only a histogram's outline as data, so the inside of a filled histogram or
   a stack looked empty and attracted the legend. The area under a `Fill`
   histogram, and between a `Band`'s edges, now counts too.
+
+### Changed
+
+- The `hep_label` documentation uses a neutral `"Demo"` label in its example
+  and notes that a collaboration's name belongs only on its own results.
 
 ### Added
 
