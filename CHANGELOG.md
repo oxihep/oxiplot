@@ -6,6 +6,16 @@ Notable changes to oxiplot and oxiplot-tex, by release. The format follows
 
 ## [Unreleased]
 
+## [0.4.2]
+
+The tag `v0.4.1` was cut by mistake on the 0.4.0 commit (its manifest says
+0.4.0); do not use it. 0.4.2 is the release with this fix.
+
+### Fixed
+
+- `Error::Io` reports its `std::io::Error` through `Error::source`, so an
+  error chain (`anyhow`, `?` into another error type) keeps the cause.
+
 ## [0.4.0]
 
 Output changes again (hence 0.4): SVGs are sized in points, large heatmaps
