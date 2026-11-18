@@ -9,6 +9,10 @@ use crate::color::Color;
 use crate::draw::{DrawCommand, DrawGroup, LineCap, LineJoin, Path, Rect, Seg, Stroke};
 
 fn num(v: f32) -> String {
+    // A non-finite coordinate would make the whole document invalid; the
+    // artists drop non-finite data, so this is only a last guard (the PDF
+    // backend does the same).
+    let v = if v.is_finite() { v } else { 0.0 };
     // Compact fixed-point; trim trailing zeros and a trailing dot.
     let s = format!("{v:.3}");
     let s = s.trim_end_matches('0').trim_end_matches('.');

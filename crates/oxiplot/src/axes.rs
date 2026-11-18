@@ -28,8 +28,14 @@ const TITLE_EDGE_PT: f32 = 2.0;
 #[derive(Clone)]
 pub struct Axes {
     pub(crate) style: Style,
+    /// Limits set by the caller (`xlim`/`ylim`); they win over everything.
     xlim: Option<(f64, f64)>,
     ylim: Option<(f64, f64)>,
+    /// Limits the data asks for: a histogram's outer edges (matplotlib's
+    /// "sticky edges", so the bars meet the frame). Used when the caller set
+    /// no limit, instead of the padded autoscale.
+    data_xlim: Option<(f64, f64)>,
+    data_ylim: Option<(f64, f64)>,
     xlabel: Option<String>,
     ylabel: Option<String>,
     title: Option<String>,
@@ -68,6 +74,8 @@ impl Axes {
             style,
             xlim: None,
             ylim: None,
+            data_xlim: None,
+            data_ylim: None,
             xlabel: None,
             ylabel: None,
             title: None,
@@ -360,17 +368,16 @@ impl Axes {
         let values = h.values();
         let n = values.len();
         let color = opts.color.unwrap_or_else(|| self.next_color());
-        let errs = if opts.yerr {
+        // A band *is* the uncertainty, and an errorbar histogram is data
+        // points with their errors (mplhep draws both from `yerr` by default).
+        let with_errors = opts.yerr || matches!(opts.histtype, HistType::Band | HistType::Errorbar);
+        let errs = if with_errors {
             Some((0..n).map(|i| h.error(i)).collect())
         } else {
             None
         };
         if n > 0 && edges.len() > n {
-            let (lo, hi) = (edges[0], edges[n]);
-            self.xlim = Some(match self.xlim {
-                Some((a, b)) => (a.min(lo), b.max(hi)),
-                None => (lo, hi),
-            });
+            self.data_xlim = Some(union_range(self.data_xlim, (edges[0], edges[n])));
         }
         self.y_from_zero = true;
         let width = opts.linewidth_pt.unwrap_or(self.style.line_width_pt);
@@ -448,6 +455,23 @@ impl Axes {
     /// # Ok::<(), oxiplot::Error>(())
     /// ```
     pub fn profile(&mut self, tp: &impl Hist1dData) -> &mut Self {
+        self.profile_with(tp, ErrorbarOpts::default())
+    }
+
+    /// Plot a profile with explicit options (color, marker, legend label).
+    ///
+    /// # Examples
+    /// ```
+    /// use oxiplot::{Axes, Binned1D, Color, ErrorbarOpts};
+    /// let tp = Binned1D::new(vec![0.0, 1.0, 2.0], vec![1.2, 1.9])?
+    ///     .with_errors(vec![0.1, 0.2])?;
+    /// let mut ax = Axes::new();
+    /// ax.profile_with(&tp, ErrorbarOpts::new().color(Color::BLACK).label("mean"));
+    /// ax.legend();
+    /// # Ok::<(), oxiplot::Error>(())
+    /// ```
+    pub fn profile_with(&mut self, tp: &impl Hist1dData, opts: ErrorbarOpts) -> &mut Self {
+        self.adopt_time_format(tp.x_time_format());
         let edges = tp.edges();
         let vals = tp.values();
         let n = vals.len();
@@ -456,19 +480,21 @@ impl Axes {
         }
         let xs: Vec<f64> = (0..n).map(|i| 0.5 * (edges[i] + edges[i + 1])).collect();
         let yerr: Vec<f64> = (0..n).map(|i| tp.error(i)).collect();
-        let color = self.next_color();
+        let color = opts.color.unwrap_or_else(|| self.next_color());
         self.add_artist(Artist::Errorbar(ErrorbarArtist {
             xs,
             ys: vals,
             xerr: None,
             yerr: Some((yerr.clone(), yerr)),
             color,
-            marker: Marker::Circle,
-            marker_size_pt: self.style.marker_size_pt * 0.8,
+            marker: opts.marker,
+            marker_size_pt: opts
+                .marker_size_pt
+                .unwrap_or(self.style.marker_size_pt * 0.8),
             elinewidth_pt: 1.0,
-            capsize_pt: 0.0,
-            line_width_pt: None,
-            label: None,
+            capsize_pt: opts.capsize_pt,
+            line_width_pt: opts.line.then_some(self.style.line_width_pt),
+            label: opts.label,
         }));
         self
     }
@@ -504,7 +530,7 @@ impl Axes {
         let mut dmin_pos = f64::INFINITY; // smallest strictly-positive value, for log
         for row in &values {
             for &v in row {
-                if v != 0.0 {
+                if v != 0.0 && v.is_finite() {
                     dmin = dmin.min(v);
                     dmax = dmax.max(v);
                 }
@@ -530,8 +556,8 @@ impl Axes {
         let nx = values.len();
         let ny = values.first().map_or(0, Vec::len);
         if nx > 0 && ny > 0 && xedges.len() > nx && yedges.len() > ny {
-            self.xlim = Some((xedges[0], xedges[nx]));
-            self.ylim = Some((yedges[0], yedges[ny]));
+            self.data_xlim = Some(union_range(self.data_xlim, (xedges[0], xedges[nx])));
+            self.data_ylim = Some(union_range(self.data_ylim, (yedges[0], yedges[ny])));
         }
         self.colorbar = Some(ColorbarSpec {
             vmin,
@@ -558,6 +584,31 @@ impl Axes {
     /// [`Error::LengthMismatch`](crate::Error::LengthMismatch) if `ys` is not as
     /// long as `xs` (matplotlib raises a `ValueError`); nothing is drawn.
     pub fn plot(&mut self, xs: &[f64], ys: &[f64]) -> crate::Result<&mut Self> {
+        self.plot_with(xs, ys, CurveOpts::default())
+    }
+
+    /// Plot a connected line with explicit options (color, legend label, line
+    /// width, dash pattern). [`CurveOpts::samples`] does not apply: the line
+    /// goes through the given points.
+    ///
+    /// # Errors
+    /// [`Error::LengthMismatch`](crate::Error::LengthMismatch) if `ys` is not as
+    /// long as `xs`; nothing is drawn.
+    ///
+    /// # Examples
+    /// ```
+    /// use oxiplot::{Axes, CurveOpts};
+    /// let mut ax = Axes::new();
+    /// ax.plot_with(&[0.0, 1.0, 2.0], &[0.0, 1.0, 4.0], CurveOpts::new().label("x²"))?;
+    /// ax.legend();
+    /// # Ok::<(), oxiplot::Error>(())
+    /// ```
+    pub fn plot_with(
+        &mut self,
+        xs: &[f64],
+        ys: &[f64],
+        opts: CurveOpts,
+    ) -> crate::Result<&mut Self> {
         if ys.len() != xs.len() {
             return Err(crate::Error::LengthMismatch {
                 what: "plot ys",
@@ -565,16 +616,16 @@ impl Axes {
                 found: ys.len(),
             });
         }
-        let color = self.next_color();
+        let color = opts.color.unwrap_or_else(|| self.next_color());
         self.add_artist(Artist::Line(LineArtist {
             xs: xs.to_vec(),
             ys: ys.to_vec(),
             color,
-            width_pt: self.style.line_width_pt,
-            dash: None,
+            width_pt: opts.linewidth_pt.unwrap_or(self.style.line_width_pt),
+            dash: opts.dash,
             marker: Marker::None,
             marker_size_pt: self.style.marker_size_pt,
-            label: None,
+            label: opts.label,
         }));
         Ok(self)
     }
@@ -684,7 +735,9 @@ impl Axes {
         self
     }
 
-    /// Resolve the data limits, honoring explicit limits and autoscaling the rest.
+    /// Resolve the data limits: the caller's limits first, then the data's
+    /// own (a histogram's outer edges), then a padded autoscale over every
+    /// artist. Always finite with a nonzero span, whatever the data.
     fn limits(&self) -> (f64, f64, f64, f64) {
         let auto = self
             .artists
@@ -693,37 +746,27 @@ impl Axes {
             .reduce(Bounds::union);
         let m = self.style.margin as f64;
 
-        let (xmin, xmax) = match self.xlim {
-            Some(l) => l,
-            None => match auto {
-                Some(b) => {
-                    let pad = (b.xmax - b.xmin) * m;
-                    let pad = if pad.abs() < f64::EPSILON { 0.5 } else { pad };
-                    (b.xmin - pad, b.xmax + pad)
-                }
-                None => (0.0, 1.0),
-            },
-        };
-        let (ymin, ymax) = match self.ylim {
-            Some(l) => l,
-            None => match auto {
-                Some(b) => {
-                    let span = b.ymax - b.ymin;
-                    let pad = if span.abs() < f64::EPSILON {
-                        0.5
-                    } else {
-                        span * m
-                    };
-                    if self.y_from_zero {
-                        let top = b.ymax.max(0.0);
-                        (0.0, top + top.abs().max(1.0) * m)
-                    } else {
-                        (b.ymin - pad, b.ymax + pad)
-                    }
-                }
-                None => (0.0, 1.0),
-            },
-        };
+        let (xmin, xmax) = self.xlim.or(self.data_xlim).unwrap_or_else(|| match auto {
+            Some(b) => padded(b.xmin, b.xmax, m),
+            None => (0.0, 1.0),
+        });
+        let (ymin, ymax) = self.ylim.or(self.data_ylim).unwrap_or_else(|| match auto {
+            // Histograms stand on y = 0 (a sticky edge, as in matplotlib):
+            // pad only the side(s) away from zero, so negative bins (a
+            // weighted or subtracted histogram) stay in view.
+            Some(b) if self.y_from_zero => {
+                let (lo, hi) = (b.ymin.min(0.0), b.ymax.max(0.0));
+                let pad = (hi - lo).max(1.0) * m;
+                (
+                    if lo < 0.0 { lo - pad } else { 0.0 },
+                    if hi > 0.0 || lo == 0.0 { hi + pad } else { 0.0 },
+                )
+            }
+            Some(b) => padded(b.ymin, b.ymax, m),
+            None => (0.0, 1.0),
+        });
+        let (xmin, xmax) = sane_range(xmin, xmax);
+        let (ymin, ymax) = sane_range(ymin, ymax);
         (xmin, xmax, ymin, ymax)
     }
 
@@ -1120,6 +1163,43 @@ impl Default for Axes {
     }
 }
 
+/// The smallest range holding both `a` (if any) and `b`.
+fn union_range(a: Option<(f64, f64)>, b: (f64, f64)) -> (f64, f64) {
+    match a {
+        Some((lo, hi)) => (lo.min(b.0), hi.max(b.1)),
+        None => b,
+    }
+}
+
+/// `[lo, hi]` widened by `margin` of its span on each side (±0.5 when the
+/// span is zero, e.g. a single point).
+fn padded(lo: f64, hi: f64, margin: f64) -> (f64, f64) {
+    let pad = (hi - lo) * margin;
+    let pad = if pad.abs() < f64::EPSILON { 0.5 } else { pad };
+    (lo - pad, hi + pad)
+}
+
+/// A drawable axis range from `(lo, hi)`: a non-finite end, or a span that
+/// overflows `f64`, falls back to `[0, 1]` (anchored on the finite end when
+/// there is one); an empty range is widened around its value. The order is
+/// kept, so an inverted range (`xlim(10.0..0.0)`) still flips the axis.
+fn sane_range(lo: f64, hi: f64) -> (f64, f64) {
+    match (lo.is_finite(), hi.is_finite()) {
+        (true, true) if (hi - lo).is_finite() => {
+            if hi == lo {
+                let half = (lo.abs() * 0.05).max(0.5);
+                (lo - half, hi + half)
+            } else {
+                (lo, hi)
+            }
+        }
+        (true, true) => (0.0, 1.0),
+        (true, false) => (lo, lo + 1.0),
+        (false, true) => (hi - 1.0, hi),
+        (false, false) => (0.0, 1.0),
+    }
+}
+
 /// Options for [`Axes::hist_with`]. Build with [`HistOpts::new`] and the chained
 /// setters. Defaults to an mplhep step outline with no error bars and the next
 /// cycle color.
@@ -1356,5 +1436,152 @@ impl CurveOpts {
     pub fn samples(mut self, n: usize) -> Self {
         self.samples = n;
         self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{Binned1D, Binned2D, Points};
+
+    fn hist(edges: &[f64], values: &[f64]) -> Binned1D {
+        Binned1D::new(edges.to_vec(), values.to_vec()).unwrap()
+    }
+
+    #[test]
+    fn a_histogram_sets_sticky_x_edges() {
+        let mut ax = Axes::new();
+        ax.hist(&hist(&[0.0, 50.0, 100.0], &[1.0, 2.0]));
+        assert_eq!(ax.resolved_xlim(), (0.0, 100.0));
+        // A second histogram widens them.
+        ax.hist(&hist(&[-20.0, 0.0], &[1.0]));
+        assert_eq!(ax.resolved_xlim(), (-20.0, 100.0));
+    }
+
+    #[test]
+    fn user_limits_survive_later_plots() {
+        // Setting the range first, then plotting, must not widen it.
+        let mut ax = Axes::new();
+        ax.xlim(20.0..80.0);
+        ax.hist(&hist(&[0.0, 50.0, 100.0], &[1.0, 2.0]));
+        assert_eq!(ax.resolved_xlim(), (20.0, 80.0));
+
+        let mut ax = Axes::new();
+        ax.xlim(0.25..0.75).ylim(0.2..0.8);
+        ax.hist2d(&Binned2D::new(vec![0.0, 1.0], vec![0.0, 1.0], vec![vec![1.0]]).unwrap());
+        assert_eq!(ax.resolved_xlim(), (0.25, 0.75));
+        assert_eq!(ax.resolved_ylim(), (0.2, 0.8));
+    }
+
+    #[test]
+    fn histogram_y_range_starts_at_zero_and_keeps_negative_bins() {
+        let mut ax = Axes::new();
+        ax.hist(&hist(&[0.0, 1.0, 2.0], &[2.0, 10.0]));
+        let (lo, hi) = ax.resolved_ylim();
+        assert_eq!(lo, 0.0);
+        assert!(hi > 10.0 && hi < 11.0, "{hi}");
+
+        // A subtracted or weighted histogram goes below zero: show it.
+        let mut ax = Axes::new();
+        ax.hist(&hist(&[0.0, 1.0, 2.0], &[-5.0, 3.0]));
+        let (lo, hi) = ax.resolved_ylim();
+        assert!(lo < -5.0 && hi > 3.0, "({lo}, {hi})");
+
+        let mut ax = Axes::new();
+        ax.hist(&hist(&[0.0, 1.0, 2.0], &[-5.0, -3.0]));
+        let (lo, hi) = ax.resolved_ylim();
+        assert!(lo < -5.0 && hi == 0.0, "({lo}, {hi})");
+    }
+
+    #[test]
+    fn limits_are_always_drawable() {
+        let finite = |(a, b): (f64, f64)| a.is_finite() && b.is_finite() && a != b;
+
+        let mut ax = Axes::new();
+        ax.plot(&[0.0, 1.0], &[0.0, 1.0]).unwrap();
+        ax.xlim(5.0..5.0).ylim(f64::NAN..1.0);
+        assert!(finite(ax.resolved_xlim()) && finite(ax.resolved_ylim()));
+
+        // A span too wide for f64.
+        let mut ax = Axes::new();
+        ax.plot(&[-1e308, 1e308], &[0.0, 1.0]).unwrap();
+        assert!(finite(ax.resolved_xlim()));
+
+        // Infinite and NaN data are left out of the autoscale.
+        let mut ax = Axes::new();
+        ax.hist(&hist(
+            &[0.0, 1.0, 2.0, 3.0],
+            &[f64::INFINITY, 4.0, f64::NAN],
+        ));
+        let (lo, hi) = ax.resolved_ylim();
+        assert!(lo == 0.0 && hi > 4.0 && hi < 5.0, "({lo}, {hi})");
+
+        // An inverted range is the caller's choice: it is kept.
+        let mut ax = Axes::new();
+        ax.xlim(10.0..0.0);
+        assert_eq!(ax.resolved_xlim(), (10.0, 0.0));
+    }
+
+    #[test]
+    fn band_and_errorbar_histograms_carry_their_errors() {
+        for histtype in [HistType::Band, HistType::Errorbar] {
+            let mut ax = Axes::new();
+            ax.hist_with(
+                &hist(&[0.0, 1.0, 2.0], &[4.0, 9.0]),
+                HistOpts::new().histtype(histtype),
+            );
+            let Artist::Step(a) = &ax.artists[0] else {
+                panic!("not a histogram")
+            };
+            assert_eq!(a.errs, Some(vec![2.0, 3.0]), "{histtype}");
+        }
+        // A plain step outline draws no error bars unless asked.
+        let mut ax = Axes::new();
+        ax.hist(&hist(&[0.0, 1.0], &[4.0]));
+        let Artist::Step(a) = &ax.artists[0] else {
+            panic!("not a histogram")
+        };
+        assert_eq!(a.errs, None);
+    }
+
+    #[test]
+    fn profile_and_plot_options_reach_the_legend() {
+        let mut ax = Axes::new();
+        let tp = hist(&[0.0, 1.0, 2.0], &[1.0, 2.0]);
+        ax.profile_with(
+            &tp,
+            ErrorbarOpts::new().color(Color::BLACK).label("profile"),
+        );
+        ax.plot_with(&[0.0, 1.0], &[1.0, 2.0], CurveOpts::new().label("line"))
+            .unwrap();
+        ax.errorbar(&Points::new(vec![0.5], vec![1.0]).unwrap());
+        let labels: Vec<String> = ax.legend_items().into_iter().map(|i| i.label).collect();
+        assert_eq!(labels, ["profile", "line"]);
+        let Artist::Errorbar(p) = &ax.artists[0] else {
+            panic!("not points")
+        };
+        assert_eq!(p.color, Color::BLACK);
+    }
+
+    #[test]
+    fn profile_adopts_a_time_axis() {
+        struct Timed;
+        impl Hist1dData for Timed {
+            fn edges(&self) -> Vec<f64> {
+                vec![0.0, 60.0]
+            }
+            fn values(&self) -> Vec<f64> {
+                vec![1.0]
+            }
+            fn error(&self, _: usize) -> f64 {
+                0.1
+            }
+            fn x_time_format(&self) -> Option<String> {
+                Some("%H:%M".into())
+            }
+        }
+        let mut ax = Axes::new();
+        ax.profile(&Timed);
+        assert!(ax.x_time_format_for_test().is_some());
     }
 }

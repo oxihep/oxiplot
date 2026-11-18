@@ -5,7 +5,7 @@ use crate::artists::{LegendHandle, Marker, draw_marker};
 use crate::axes::Axes;
 use crate::color::Color;
 use crate::draw::{DrawCommand, DrawGroup, Path, Rect, Seg, Stroke};
-use crate::text::{self, FontStyle, HAlign, VAlign};
+use crate::text::{HAlign, VAlign};
 
 /// A rounded rectangle as a path (matplotlib `fancybox` legend frame). `r` is the
 /// corner radius in pixels, clamped so it never exceeds half the shorter side.
@@ -47,7 +47,9 @@ pub(crate) fn legend_rect(ax: &Axes, box_: Rect) -> Option<Rect> {
 
     let max_w = items
         .iter()
-        .map(|it| text::measure(&s.fonts, &it.label, fs, FontStyle::Regular).width)
+        // Measured as drawn: a `$…$` label is typeset, so its raw source
+        // (backslashes, braces) says nothing about its width.
+        .map(|it| crate::mathtext::label_extents(&s.fonts, &it.label, fs).0)
         .fold(0.0_f32, f32::max);
 
     let box_w = pad + handle_w + gap + max_w + pad;
@@ -144,5 +146,30 @@ pub(crate) fn draw_legend(g: &mut DrawGroup, ax: &Axes, box_: Rect) {
             VAlign::Middle,
             0.0,
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{CurveOpts, FontSet};
+
+    fn legend_width(label: &str) -> f32 {
+        let mut ax = Axes::new();
+        ax.fonts(FontSet::stix());
+        ax.plot_with(&[0.0, 1.0], &[0.0, 1.0], CurveOpts::new().label(label))
+            .unwrap();
+        legend_rect(&ax, Rect::new(0.0, 0.0, 600.0, 400.0))
+            .unwrap()
+            .w
+    }
+
+    #[test]
+    fn a_math_label_is_measured_as_typeset() {
+        // The TeX source is far longer than what it typesets to; the frame
+        // must fit the typeset label, not the source.
+        let math = legend_width(r"$\sqrt{s} = 13\,\mathrm{TeV}$");
+        let source_as_text = legend_width(r"\sqrt{s} = 13\,\mathrm{TeV}");
+        assert!(math < 0.7 * source_as_text, "{math} vs {source_as_text}");
     }
 }

@@ -6,6 +6,40 @@ Notable changes to oxiplot and oxiplot-tex, by release. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `Axes::plot_with` (color, legend label, width, dash for a line through
+  points) and `Axes::profile_with` (the `ErrorbarOpts` of `errorbar_with`),
+  so plotted lines and profiles can appear in the legend.
+
+### Fixed
+
+- **Limits set before plotting were overwritten.** `xlim` then `hist`
+  widened the range to the histogram's edges, and `hist2d` replaced both
+  limits outright. A histogram's edges are now the default range (its
+  "sticky edges") and the caller's `xlim`/`ylim` always win.
+- **Negative bins were cut off.** A histogram's y range started at 0 even
+  when bins went below it (weighted or background-subtracted histograms); an
+  all-negative histogram showed nothing. The range now stands on 0 and
+  extends below it when the data does.
+- **NaN or infinite values broke the output.** They reached the SVG as
+  `NaN` coordinates (an invalid document), and an infinite bin or a NaN
+  limit made the axis range non-finite (one plot produced 1.2 MB of `NaN`
+  tick paths). Non-finite bins and points are now skipped (a bin draws
+  empty), and limits always resolve to a finite, nonzero range.
+- **`HistType::Band` drew nothing without `.yerr()`.** Band and errorbar
+  histograms now carry their errors on their own, as in mplhep.
+- **A `$…$` legend label made the legend too wide.** The frame was sized to
+  the label's TeX source rather than its typeset width (2.4× too wide for
+  `$\sqrt{s} = 13\,\mathrm{TeV}$`).
+- **Tick labels could all read the same.** Scientific labels kept one
+  decimal, so ticks from 100000 to 100001 all read `1e5`. Labels now keep
+  enough digits to differ, falling back to plain decimals when scientific
+  notation would need a long mantissa; tick positions no longer gather
+  rounding error (`100000.6`, not `100000.59999999999`).
+- `Axes::profile` now picks up a time axis from its data, as `hist` and
+  `errorbar` do.
+
 ### Changed
 
 - **Rust 1.100 and edition 2024.** The minimum supported Rust version
