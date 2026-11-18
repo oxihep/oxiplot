@@ -12,6 +12,7 @@ use crate::colorbar::ColorbarSpec;
 use crate::data::{Hist1dData, Hist2dData, PointData};
 use crate::draw::{DrawCommand, DrawGroup, Rect, Stroke};
 use crate::figure::SaveOpts;
+use crate::legend::Loc;
 use crate::style::{Style, TickDir};
 use crate::text::{self, FontStyle, HAlign, VAlign};
 use crate::ticker;
@@ -23,6 +24,31 @@ const TITLE_PAD_PT: f32 = 6.0;
 /// The least room left between the top of a title and the top of the figure,
 /// in points.
 const TITLE_EDGE_PT: f32 = 2.0;
+/// Gap between the tick labels and the axis label, in points.
+const AXIS_LABEL_PAD_PT: f32 = 4.0;
+/// Gap between the frame and the experiment label's baseline, in points.
+const HEP_LABEL_PAD_PT: f32 = 5.0;
+
+/// How far an axes' decorations reach outside its frame, in pixels.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub(crate) struct Insets {
+    pub left: f32,
+    pub right: f32,
+    pub top: f32,
+    pub bottom: f32,
+    /// The part of `left` taken by the y tick marks and labels (the y-axis
+    /// label sits beyond it).
+    pub ytick_area: f32,
+}
+
+/// Major tick positions and labels for one frame.
+struct TickLayout {
+    limits: (f64, f64, f64, f64),
+    xticks: Vec<f64>,
+    yticks: Vec<f64>,
+    xlabels: Vec<String>,
+    ylabels: Vec<String>,
+}
 
 /// A single plot panel.
 #[derive(Clone)]
@@ -58,6 +84,11 @@ pub struct Axes {
     show_yticklabels: bool,
     /// Drop the `(bottom, top)` y tick labels (avoids overlap at a shared seam).
     ylabel_prune: (bool, bool),
+    /// The width left of the frame given to the y tick labels, when a figure
+    /// aligns the y-axis labels of a column (otherwise this axes' own).
+    pub(crate) ytick_area: Option<f32>,
+    /// Where the legend goes.
+    legend_loc: Loc,
     /// A ROOT-style fit statistics box (`TPaveStats`), set by [`Axes::fit_stats`].
     #[cfg(feature = "fit")]
     stats: Option<crate::statbox::StatData>,
@@ -91,6 +122,8 @@ impl Axes {
             show_xticklabels: true,
             show_yticklabels: true,
             ylabel_prune: (false, false),
+            ytick_area: None,
+            legend_loc: Loc::Best,
             #[cfg(feature = "fit")]
             stats: None,
         }
@@ -175,10 +208,34 @@ impl Axes {
         self.ylim = Some((range.start, range.end));
         self
     }
-    /// Enable the legend.
+    /// Enable the legend, placed where it covers the least data
+    /// ([`Loc::Best`], matplotlib's default).
     pub fn legend(&mut self) -> &mut Self {
         self.show_legend = true;
         self
+    }
+
+    /// Enable the legend at a chosen spot (matplotlib's `legend(loc=…)`).
+    pub fn legend_loc(&mut self, loc: Loc) -> &mut Self {
+        self.legend_loc = loc;
+        self.show_legend = true;
+        self
+    }
+
+    /// Where the legend goes.
+    pub(crate) fn legend_location(&self) -> Loc {
+        self.legend_loc
+    }
+
+    /// Every artist's sample points in pixels on a frame at `box_`: what
+    /// [`Loc::Best`] keeps the legend off.
+    pub(crate) fn data_points_px(&self, box_: Rect) -> Vec<(f32, f32)> {
+        let (xmin, xmax, ymin, ymax) = self.limits();
+        let t = Transform::new(box_, xmin, xmax, ymin, ymax);
+        self.artists
+            .iter()
+            .flat_map(|a| a.sample_points(&t))
+            .collect()
     }
 
     /// Show a matplotlib-style grid at the major tick positions (light grey
@@ -268,54 +325,30 @@ impl Axes {
         path: impl AsRef<std::path::Path>,
         opts: SaveOpts,
     ) -> crate::error::Result<()> {
-        let (groups, w, h) = self.groups(opts.dpi);
-        let bg = self.background(opts.transparent);
-        crate::figure::write_groups(&groups, w, h, bg, path.as_ref())
+        self.figure().save_with(path, opts)
     }
 
     /// Render to an in-memory PNG (honoring [`SaveOpts`] DPI/transparency) instead
     /// of writing a file.
     pub fn to_png_bytes(&self, opts: SaveOpts) -> crate::error::Result<Vec<u8>> {
-        let (groups, w, h) = self.groups(opts.dpi);
-        crate::render::raster::render_png(&groups, w, h, self.background(opts.transparent))
+        self.figure().to_png_bytes(opts)
     }
 
     /// Render to an in-memory SVG string.
     #[must_use]
     pub fn to_svg_string(&self) -> String {
-        let (groups, w, h) = self.groups(None);
-        crate::render::svg::render(&groups, w, h, self.background(false))
+        self.figure().to_svg_string()
     }
 
     /// Render to in-memory PDF bytes.
     #[must_use]
     pub fn to_pdf_bytes(&self) -> Vec<u8> {
-        let (groups, w, h) = self.groups(None);
-        crate::render::pdf::render(&groups, w, h, self.background(false))
+        self.figure().to_pdf_bytes()
     }
 
-    /// The page background color (`face_color`, or fully transparent).
-    fn background(&self, transparent: bool) -> Color {
-        if transparent {
-            Color::TRANSPARENT
-        } else {
-            self.style.face_color
-        }
-    }
-
-    /// Build the draw groups at an optional DPI override, with the pixel size used.
-    fn groups(&self, dpi: Option<f32>) -> (Vec<DrawGroup>, u32, u32) {
-        let mut tmp;
-        let ax = match dpi {
-            Some(dpi) => {
-                tmp = self.clone();
-                tmp.style.dpi = dpi;
-                &tmp
-            }
-            None => self,
-        };
-        let (w, h) = ax.style.figsize_px();
-        (ax.render(w, h), w, h)
+    /// This axes alone on a figure of its style's size: how it is saved.
+    fn figure(&self) -> crate::figure::Figure {
+        crate::figure::Figure::with_style(self.style.clone()).with_axes([self.clone()])
     }
 
     /// Draw the x values as times, with `format` saying how a label reads: a
@@ -329,6 +362,12 @@ impl Axes {
     pub fn x_time_format(&mut self, format: &str) -> &mut Self {
         self.x_time = Some(TimeFormat::parse(format));
         self
+    }
+
+    /// The `(bottom, top)` y tick labels dropped, for the crate's own tests.
+    #[cfg(test)]
+    pub(crate) fn ylabel_prune_for_test(&self) -> (bool, bool) {
+        self.ylabel_prune
     }
 
     /// The time format in force, for the crate's own tests.
@@ -770,32 +809,165 @@ impl Axes {
         (xmin, xmax, ymin, ymax)
     }
 
-    fn axes_box(&self, fig_w: f32, fig_h: f32) -> Rect {
-        let (l, r, b, t) = self.style.margins_frac;
-        Rect::new(
-            l * fig_w,
-            (1.0 - t) * fig_h,
-            (r - l) * fig_w,
-            (t - b) * fig_h,
-        )
+    /// Build the draw groups for this axes alone on a `fig_w × fig_h` figure,
+    /// laid out as [`Axes::save`] does.
+    #[cfg(test)]
+    pub(crate) fn render(&self, fig_w: u32, fig_h: u32) -> Vec<DrawGroup> {
+        crate::figure::Figure::with_style(self.style.clone())
+            .with_axes([self.clone()])
+            .groups_at(fig_w, fig_h)
     }
 
-    /// Build the draw groups using the default (margins-based) axes box.
-    pub(crate) fn render(&self, fig_w: u32, fig_h: u32) -> Vec<DrawGroup> {
-        let box_ = self.axes_box(fig_w as f32, fig_h as f32);
-        self.render_at(box_)
+    /// The tick positions and labels on a frame at `box_` (their number
+    /// follows the frame's size).
+    fn tick_layout(&self, box_: Rect) -> TickLayout {
+        let (xmin, xmax, ymin, ymax) = self.limits();
+        let xtarget = ((box_.w / 70.0).round() as usize).clamp(3, 11);
+        let ytarget = ((box_.h / 50.0).round() as usize).clamp(3, 9);
+        // A time axis steps in minutes, hours or days, not in "nice" decimals.
+        let xticks = match &self.x_time {
+            Some(_) => crate::timeaxis::time_ticks(xmin, xmax, xtarget),
+            None => ticker::ticks(xmin, xmax, xtarget),
+        };
+        let yticks = ticker::ticks(ymin, ymax, ytarget);
+        let xlabels = match &self.x_time {
+            Some(time) => xticks.iter().map(|&v| time.label(v)).collect(),
+            None => ticker::format_ticks(&xticks, ticker::nice_step(xmin, xmax, xtarget)),
+        };
+        let ylabels = ticker::format_ticks(&yticks, ticker::nice_step(ymin, ymax, ytarget));
+        TickLayout {
+            limits: (xmin, xmax, ymin, ymax),
+            xticks,
+            yticks,
+            xlabels,
+            ylabels,
+        }
+    }
+
+    /// The frame left of a colorbar, and the colorbar's own rectangle, when
+    /// the axes has one: the bar and its tick labels and label take the right
+    /// of `box_`, sized to what they hold.
+    fn split_colorbar(&self, box_: Rect) -> (Rect, Option<Rect>) {
+        let Some(spec) = &self.colorbar else {
+            return (box_, None);
+        };
+        let s = &self.style;
+        let (cb_w, gap) = (s.px(14.0), s.px(12.0));
+        let outer = crate::colorbar::outer_width(spec, s, box_.h);
+        let mut frame = box_;
+        frame.w = (frame.w - gap - cb_w - outer).max(box_.w * 0.3);
+        let bar = Rect::new(frame.right() + gap, frame.y, cb_w, frame.h);
+        (frame, Some(bar))
+    }
+
+    /// The length of the major ticks outside and inside the frame.
+    fn tick_lengths(&self) -> (f32, f32) {
+        let major = self.style.px(self.style.tick_major_len_pt);
+        match self.style.tick_dir {
+            TickDir::Out => (major, 0.0),
+            TickDir::In => (0.0, major),
+            TickDir::InOut => (major, major),
+        }
+    }
+
+    /// The height of the experiment-label row above the frame (`hep_label`,
+    /// `hep_rhs`), or 0 when there is none.
+    fn hep_row_height(&self) -> f32 {
+        let s = &self.style;
+        let base = s.px(s.font_size_pt);
+        let mut ascent = 0.0_f32;
+        if let Some((exp, _)) = &self.hep_label {
+            ascent = text::measure(&s.fonts, exp, base * 1.3, FontStyle::Bold).ascent;
+        }
+        if let Some(rhs) = &self.hep_rhs {
+            ascent = ascent.max(crate::mathtext::label_extents(&s.fonts, rhs, base).1);
+        }
+        if ascent > 0.0 {
+            s.px(HEP_LABEL_PAD_PT) + ascent
+        } else {
+            0.0
+        }
+    }
+
+    /// The width taken left of the frame by the y tick marks and labels.
+    fn ytick_label_area(&self, ticks: &TickLayout) -> f32 {
+        let s = &self.style;
+        if !self.show_yticklabels {
+            return 0.0;
+        }
+        let tlab = s.px(s.tick_label_size_pt);
+        let widest = ticks
+            .ylabels
+            .iter()
+            .map(|l| text::measure(&s.fonts, l, tlab, FontStyle::Regular).width)
+            .fold(0.0_f32, f32::max);
+        self.tick_lengths().0 + s.px(s.tick_pad_pt) + widest
+    }
+
+    /// How far the axes' decorations (tick labels, axis labels, title,
+    /// experiment label) reach outside a frame at `box_`, in pixels: what a
+    /// figure must leave around the frame so nothing overlaps.
+    pub(crate) fn insets(&self, box_: Rect) -> Insets {
+        let s = &self.style;
+        let (frame, _) = self.split_colorbar(box_);
+        let ticks = self.tick_layout(frame);
+        let (out_len, _) = self.tick_lengths();
+        let tlab = s.px(s.tick_label_size_pt);
+        let labsize = s.px(s.label_size_pt);
+        let label_height = |l: &str| {
+            let (_, a, d) = crate::mathtext::label_extents(&s.fonts, l, labsize);
+            a + d
+        };
+
+        let ytick_area = self.ytick_label_area(&ticks);
+        let mut left = ytick_area;
+        if let (Some(yl), true) = (&self.ylabel, self.show_yticklabels) {
+            left += s.px(AXIS_LABEL_PAD_PT) + label_height(yl);
+        }
+
+        let mut bottom = 0.0;
+        let mut right = 0.0_f32;
+        if self.show_xticklabels && !ticks.xticks.is_empty() {
+            let tick_h = text::measure(&s.fonts, "0", tlab, FontStyle::Regular).height();
+            bottom = out_len + s.px(s.tick_pad_pt) + tick_h;
+            if let Some(xl) = &self.xlabel {
+                bottom += s.px(AXIS_LABEL_PAD_PT) + label_height(xl);
+            }
+            // The outer x tick labels are centred on their ticks, so the ones
+            // at the ends of the axis hang over the frame by half their width.
+            let (xmin, xmax, ymin, ymax) = ticks.limits;
+            let t = Transform::new(frame, xmin, xmax, ymin, ymax);
+            for (&v, l) in ticks.xticks.iter().zip(&ticks.xlabels) {
+                let half = text::measure(&s.fonts, l, tlab, FontStyle::Regular).width / 2.0;
+                left = left.max(frame.x - (t.x(v) - half));
+                right = right.max(t.x(v) + half - box_.right());
+            }
+        }
+
+        let hep = self.hep_row_height();
+        let title = self.title.as_ref().map_or(0.0, |tt| {
+            let (_, a, d) = crate::mathtext::label_extents(&s.fonts, tt, s.px(s.title_size_pt));
+            s.px(TITLE_PAD_PT) + a + d
+        });
+        Insets {
+            left,
+            right,
+            // A title sits above the experiment-label row, not on it.
+            top: hep + title,
+            bottom,
+            ytick_area,
+        }
     }
 
     /// Build the draw groups with the data area placed at an explicit pixel box
     /// (used by [`crate::figure::Figure`] for grid/ratio layouts).
     pub(crate) fn render_at(&self, mut box_: Rect) -> Vec<DrawGroup> {
         let s = &self.style;
-        // A title taller than the top margin (a stacked fraction, say) would run
-        // off the top of the figure: lower the frame just enough to keep it in.
-        if let Some(tt) = &self.title {
-            let (_, ascent, descent) =
-                crate::mathtext::label_extents(&s.fonts, tt, s.px(s.title_size_pt));
-            let top = box_.y - s.px(TITLE_PAD_PT) - (ascent + descent);
+        // A figure leaves room for the title; should it still not fit (a
+        // title taller than the figure allows), lower the frame just enough
+        // to keep it in.
+        if self.title.is_some() {
+            let top = box_.y - self.insets(box_).top;
             let edge = s.px(TITLE_EDGE_PT);
             if top < edge {
                 // Never take more than half the frame, however tall the title.
@@ -805,30 +977,16 @@ impl Axes {
             }
         }
         // Reserve space on the right for a colorbar, if present.
-        let cb_rect = self.colorbar.as_ref().map(|_| {
-            let cb_w = s.px(14.0);
-            let gap = s.px(12.0);
-            let label_space = s.px(46.0);
-            box_.w -= gap + cb_w + label_space;
-            Rect::new(box_.right() + gap, box_.y, cb_w, box_.h)
-        });
-        let (xmin, xmax, ymin, ymax) = self.limits();
+        let (frame, cb_rect) = self.split_colorbar(box_);
+        let box_ = frame;
+        let TickLayout {
+            limits: (xmin, xmax, ymin, ymax),
+            xticks,
+            yticks,
+            xlabels,
+            ylabels,
+        } = self.tick_layout(box_);
         let t = Transform::new(box_, xmin, xmax, ymin, ymax);
-
-        let xtick_target = ((box_.w / 70.0).round() as usize).clamp(3, 11);
-        // A time axis steps in minutes, hours or days, not in "nice" decimals.
-        let xticks = match &self.x_time {
-            Some(_) => crate::timeaxis::time_ticks(xmin, xmax, xtick_target),
-            None => ticker::ticks(xmin, xmax, xtick_target),
-        };
-        let yticks = ticker::ticks(ymin, ymax, ((box_.h / 50.0).round() as usize).clamp(3, 9));
-        let xstep = ticker::nice_step(xmin, xmax, ((box_.w / 70.0).round() as usize).clamp(3, 11));
-        let ystep = ticker::nice_step(ymin, ymax, ((box_.h / 50.0).round() as usize).clamp(3, 9));
-        let xlabels = match &self.x_time {
-            Some(time) => xticks.iter().map(|&v| time.label(v)).collect(),
-            None => ticker::format_ticks(&xticks, xstep),
-        };
-        let ylabels = ticker::format_ticks(&yticks, ystep);
 
         let mut grid = DrawGroup::new(Some(box_));
         let mut data = DrawGroup::new(Some(box_));
@@ -1037,7 +1195,7 @@ impl Axes {
         let labsize = s.px(s.label_size_pt);
         if let (Some(xl), true) = (&self.xlabel, self.show_xticklabels) {
             let tick_h = text::measure(&s.fonts, "0", tlab, FontStyle::Regular).height();
-            let y = label_y + tick_h + s.px(4.0);
+            let y = label_y + tick_h + s.px(AXIS_LABEL_PAD_PT);
             crate::mathtext::layout_label(
                 &mut axis,
                 &s.fonts,
@@ -1052,7 +1210,13 @@ impl Axes {
             );
         }
         if let (Some(yl), true) = (&self.ylabel, self.show_yticklabels) {
-            let x = label_x - max_ylabel_w - s.px(4.0);
+            // In a figure the labels of a column line up: they sit beyond the
+            // widest tick labels of the column, not just of this axes.
+            let own = out_len.max(0.0) + pad + max_ylabel_w;
+            let area = self.ytick_area.map_or(own, |a| a.max(own));
+            let x = box_.x - area - s.px(AXIS_LABEL_PAD_PT);
+            // Rotated to read upwards, the label's bottom (descenders) faces
+            // the tick labels: anchor it there so nothing crosses into them.
             crate::mathtext::layout_label(
                 &mut axis,
                 &s.fonts,
@@ -1062,12 +1226,13 @@ impl Axes {
                 labsize,
                 fg,
                 HAlign::Center,
-                VAlign::Baseline,
+                VAlign::Bottom,
                 -90.0,
             );
         }
         if let Some(tt) = &self.title {
-            let y = box_.y - s.px(TITLE_PAD_PT);
+            // Above the experiment-label row, when there is one.
+            let y = box_.y - self.hep_row_height() - s.px(TITLE_PAD_PT);
             crate::mathtext::layout_label(
                 &mut axis,
                 &s.fonts,
@@ -1086,7 +1251,7 @@ impl Axes {
         // the top-left of the frame, the luminosity / energy above the top-right.
         if let Some((exp, status)) = &self.hep_label {
             let base = s.px(s.font_size_pt);
-            let baseline = box_.y - s.px(5.0);
+            let baseline = box_.y - s.px(HEP_LABEL_PAD_PT);
             let exp_size = base * 1.3;
             let exp_w = text::measure(&s.fonts, exp, exp_size, FontStyle::Bold).width;
             axis.cmds.extend(text::layout(
@@ -1122,7 +1287,7 @@ impl Axes {
                 &s.fonts,
                 rhs,
                 box_.right(),
-                box_.y - s.px(5.0),
+                box_.y - s.px(HEP_LABEL_PAD_PT),
                 s.px(s.font_size_pt),
                 fg,
                 HAlign::Right,

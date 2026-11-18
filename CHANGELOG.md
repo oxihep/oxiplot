@@ -11,6 +11,23 @@ Notable changes to oxiplot and oxiplot-tex, by release. The format follows
 - `Axes::plot_with` (color, legend label, width, dash for a line through
   points) and `Axes::profile_with` (the `ErrorbarOpts` of `errorbar_with`),
   so plotted lines and profiles can appear in the legend.
+- **Legend placement.** `Axes::legend_loc(Loc)` puts the legend at a corner,
+  edge or the centre. `Axes::legend` now uses `Loc::Best`, matplotlib's
+  default: the spot covering the fewest data points, upper right first, so a
+  legend no longer hides a peak in the upper right.
+- `PdfPages::add_axes` adds a single axes as a page.
+
+### Changed
+
+- **Figures lay out their panels around their labels.** The grid's margins
+  and gaps are now the least room left: they widen wherever a panel's tick
+  labels, axis labels or title, or the suptitle, need more (matplotlib's
+  constrained layout). Before, a 2×2 grid printed each top panel's x label
+  over the panel below it and the suptitle over the titles. Touching panels
+  (`hspace(0.0)`, a ratio plot) stay touching. A single `Axes::save` uses the
+  same layout, so long tick labels no longer leave the figure.
+- The y-axis labels of a column line up (as `fig.align_ylabels()` does in
+  matplotlib), so a ratio plot's two labels share one x.
 
 ### Fixed
 
@@ -39,6 +56,22 @@ Notable changes to oxiplot and oxiplot-tex, by release. The format follows
   rounding error (`100000.6`, not `100000.59999999999`).
 - `Axes::profile` now picks up a time axis from its data, as `hist` and
   `errorbar` do.
+- **PDF pages were 39% too large.** A page was sized in pixels as if they
+  were points, so a 6.4 × 4.8 in figure became an 8.9 × 6.7 in page (and
+  42 in wide at 300 dpi), with text past its point size. Pages are now the
+  figure's size in points at any dpi.
+- **A colorbar's label crossed its tick labels**, and wide tick labels
+  (`80000`) ran past the figure: the label was anchored on the wrong side and
+  the bar's room was a fixed 46 pt. The room now fits the labels.
+- A y-axis label's descenders reached into the tick labels (it was anchored
+  at its baseline, not its bottom).
+- **A title collided with the experiment label** (`hep_label`/`hep_rhs`); it
+  now sits above that row.
+- **Tick labels overlapped at the seams of stacked shared-x panels**
+  (`sharex` with `hspace(0.0)`): each panel below the first drops its top
+  label, as the ratio panel of `ratio_subplots` already did.
+- A fit-statistics box stacked under the legend only when they overlap, not
+  whenever the legend exists.
 
 ### Changed
 

@@ -1,11 +1,85 @@
-//! Legend rendering — a framed box of sample swatches and labels, drawn in the
-//! top-right of the axes (matplotlib's `loc="best"` lands there for most plots).
+//! Legend rendering — a framed box of sample swatches and labels, placed at a
+//! [`Loc`] inside the axes: by default the spot that covers the least data
+//! (matplotlib's `loc="best"`).
 
 use crate::artists::{LegendHandle, Marker, draw_marker};
 use crate::axes::Axes;
 use crate::color::Color;
 use crate::draw::{DrawCommand, DrawGroup, Path, Rect, Seg, Stroke};
 use crate::text::{HAlign, VAlign};
+
+/// Where a legend goes inside the axes (matplotlib's `loc`).
+///
+/// ```
+/// use oxiplot::{Axes, CurveOpts, Loc};
+/// let mut ax = Axes::new();
+/// ax.plot_with(&[0.0, 1.0], &[0.0, 1.0], CurveOpts::new().label("rising"))?;
+/// ax.legend_loc(Loc::UpperLeft);
+/// # Ok::<(), oxiplot::Error>(())
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[non_exhaustive]
+pub enum Loc {
+    /// The candidate spot that covers the fewest data points, trying them in
+    /// matplotlib's order (upper right first, so an empty corner wins there).
+    #[default]
+    Best,
+    /// Top-right corner.
+    UpperRight,
+    /// Top-left corner.
+    UpperLeft,
+    /// Bottom-left corner.
+    LowerLeft,
+    /// Bottom-right corner.
+    LowerRight,
+    /// Middle of the right edge.
+    CenterRight,
+    /// Middle of the left edge.
+    CenterLeft,
+    /// Middle of the bottom edge.
+    LowerCenter,
+    /// Middle of the top edge.
+    UpperCenter,
+    /// The centre of the axes.
+    Center,
+}
+
+impl Loc {
+    /// The fixed spots `Best` chooses from, in matplotlib's order.
+    const CANDIDATES: [Loc; 9] = [
+        Loc::UpperRight,
+        Loc::UpperLeft,
+        Loc::LowerLeft,
+        Loc::LowerRight,
+        Loc::CenterRight,
+        Loc::CenterLeft,
+        Loc::LowerCenter,
+        Loc::UpperCenter,
+        Loc::Center,
+    ];
+
+    /// The top-left corner of a `w × h` box at this spot in `frame`, `margin`
+    /// in from its edges. `Best` is placed by [`legend_rect`], not here.
+    fn origin(self, frame: Rect, w: f32, h: f32, margin: f32) -> (f32, f32) {
+        let left = frame.x + margin;
+        let right = frame.right() - margin - w;
+        let hmid = frame.x + (frame.w - w) / 2.0;
+        let top = frame.y + margin;
+        let bottom = frame.bottom() - margin - h;
+        let vmid = frame.y + (frame.h - h) / 2.0;
+        match self {
+            Loc::Best | Loc::UpperRight => (right, top),
+            Loc::UpperLeft => (left, top),
+            Loc::LowerLeft => (left, bottom),
+            Loc::LowerRight => (right, bottom),
+            Loc::CenterRight => (right, vmid),
+            Loc::CenterLeft => (left, vmid),
+            Loc::LowerCenter => (hmid, bottom),
+            Loc::UpperCenter => (hmid, top),
+            Loc::Center => (hmid, vmid),
+        }
+    }
+}
 
 /// A rounded rectangle as a path (matplotlib `fancybox` legend frame). `r` is the
 /// corner radius in pixels, clamped so it never exceeds half the shorter side.
@@ -55,9 +129,28 @@ pub(crate) fn legend_rect(ax: &Axes, box_: Rect) -> Option<Rect> {
     let box_w = pad + handle_w + gap + max_w + pad;
     let box_h = pad * 2.0 + row_h * items.len() as f32;
     let margin = s.px(s.axes_linewidth_pt) + 0.5 * fs; // borderaxespad ~0.5
-    let x0 = box_.right() - margin - box_w;
-    let y0 = box_.y + margin;
-    Some(Rect::new(x0, y0, box_w, box_h))
+    let at = |loc: Loc| {
+        let (x, y) = loc.origin(box_, box_w, box_h, margin);
+        Rect::new(x, y, box_w, box_h)
+    };
+    Some(match ax.legend_location() {
+        Loc::Best => {
+            // matplotlib's "best": the spot covering the fewest data points;
+            // ties go to the earlier candidate.
+            let pts = ax.data_points_px(box_);
+            let covered = |r: &Rect| {
+                pts.iter()
+                    .filter(|&&(x, y)| x >= r.x && x <= r.right() && y >= r.y && y <= r.bottom())
+                    .count()
+            };
+            Loc::CANDIDATES
+                .iter()
+                .map(|&loc| at(loc))
+                .min_by_key(covered)
+                .expect("there are candidates")
+        }
+        loc => at(loc),
+    })
 }
 
 /// Draw the legend into `g` (the unclipped axis group).
@@ -171,5 +264,61 @@ mod tests {
         let math = legend_width(r"$\sqrt{s} = 13\,\mathrm{TeV}$");
         let source_as_text = legend_width(r"\sqrt{s} = 13\,\mathrm{TeV}");
         assert!(math < 0.7 * source_as_text, "{math} vs {source_as_text}");
+    }
+}
+
+#[cfg(test)]
+mod placement_tests {
+    use super::*;
+    use crate::CurveOpts;
+
+    const FRAME: Rect = Rect {
+        x: 80.0,
+        y: 40.0,
+        w: 500.0,
+        h: 380.0,
+    };
+
+    fn with_line(xs: &[f64], ys: &[f64]) -> Axes {
+        let mut ax = Axes::new();
+        ax.plot_with(xs, ys, CurveOpts::new().label("data"))
+            .unwrap();
+        ax
+    }
+
+    fn is_upper_right(r: Rect) -> bool {
+        r.right() > FRAME.x + 0.9 * FRAME.w && r.y < FRAME.y + 0.1 * FRAME.h
+    }
+
+    #[test]
+    fn best_keeps_off_the_data() {
+        // A line rising to the top-right corner: the legend goes elsewhere.
+        let ax = with_line(&[0.0, 1.0, 2.0], &[0.0, 0.2, 1.0]);
+        let r = legend_rect(&ax, FRAME).unwrap();
+        assert!(!is_upper_right(r), "{r:?}");
+        let pts = ax.data_points_px(FRAME);
+        let inside = pts
+            .iter()
+            .filter(|&&(x, y)| x >= r.x && x <= r.right() && y >= r.y && y <= r.bottom())
+            .count();
+        assert_eq!(inside, 0);
+    }
+
+    #[test]
+    fn best_prefers_the_upper_right_when_it_is_free() {
+        let ax = with_line(&[0.0, 1.0, 2.0], &[1.0, 0.2, 0.0]);
+        assert!(is_upper_right(legend_rect(&ax, FRAME).unwrap()));
+    }
+
+    #[test]
+    fn an_explicit_location_is_kept() {
+        let mut ax = with_line(&[0.0, 1.0, 2.0], &[1.0, 0.2, 0.0]);
+        ax.legend_loc(Loc::UpperLeft);
+        let r = legend_rect(&ax, FRAME).unwrap();
+        assert!(r.x < FRAME.x + 0.1 * FRAME.w && r.y < FRAME.y + 0.1 * FRAME.h);
+        ax.legend_loc(Loc::LowerCenter);
+        let r = legend_rect(&ax, FRAME).unwrap();
+        assert!((r.x + r.w / 2.0 - (FRAME.x + FRAME.w / 2.0)).abs() < 1.0);
+        assert!(r.bottom() > FRAME.y + 0.9 * FRAME.h);
     }
 }

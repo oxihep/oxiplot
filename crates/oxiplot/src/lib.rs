@@ -123,6 +123,7 @@ pub use figure::{
 };
 pub use fonts::FontSet;
 pub use gridspec::GridSpec;
+pub use legend::Loc;
 pub use norm::Norm;
 #[cfg(feature = "fit")]
 pub use statbox::{Corner, StatBox};

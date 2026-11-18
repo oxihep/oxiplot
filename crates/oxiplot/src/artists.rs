@@ -701,6 +701,66 @@ impl Artist {
         }
     }
 
+    /// Points along the artist, in pixels, for judging how much of it a box
+    /// would hide (the legend's [`Loc::Best`](crate::Loc::Best)). Outlines
+    /// are sampled along their length, so a wide flat bin still counts.
+    pub(crate) fn sample_points(&self, t: &Transform) -> Vec<(f32, f32)> {
+        /// Points per segment.
+        const STEPS: usize = 8;
+        let along = |pts: &[(f64, f64)]| -> Vec<(f32, f32)> {
+            let px: Vec<(f32, f32)> = pts
+                .iter()
+                .filter(|(x, y)| x.is_finite() && y.is_finite())
+                .map(|&p| t.pt(p))
+                .collect();
+            if px.len() < 2 {
+                return px;
+            }
+            px.windows(2)
+                .flat_map(|w| {
+                    (0..STEPS).map(move |k| {
+                        let f = k as f32 / STEPS as f32;
+                        (
+                            w[0].0 + f * (w[1].0 - w[0].0),
+                            w[0].1 + f * (w[1].1 - w[0].1),
+                        )
+                    })
+                })
+                .chain(px.last().copied())
+                .collect()
+        };
+        match self {
+            Artist::Line(a) => along(
+                &a.xs
+                    .iter()
+                    .copied()
+                    .zip(a.ys.iter().copied())
+                    .collect::<Vec<_>>(),
+            ),
+            Artist::Step(a) => {
+                let mut pts = along(&staircase(&a.edges, &a.values, false));
+                for i in 0..a.n() {
+                    let (v, e) = (a.values[i], a.err(i));
+                    if v.is_finite() && e > 0.0 {
+                        let c = 0.5 * (a.edges[i] + a.edges[i + 1]);
+                        pts.push(t.pt((c, v + e)));
+                    }
+                }
+                pts
+            }
+            Artist::Errorbar(a) => (0..a.n())
+                .filter(|&i| a.drawable(i))
+                .flat_map(|i| {
+                    let (x, y) = (a.xs[i], a.ys[i]);
+                    let (yl, yh) = ErrorbarArtist::err_at(&a.yerr, i);
+                    [t.pt((x, y)), t.pt((x, y + yh)), t.pt((x, y - yl))]
+                })
+                .collect(),
+            // A heatmap fills the frame: there is no spot it leaves free.
+            Artist::Mesh(_) => Vec::new(),
+        }
+    }
+
     pub(crate) fn legend(&self) -> Option<LegendItem> {
         match self {
             Artist::Line(a) => a.legend(),
