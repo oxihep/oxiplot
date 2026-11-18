@@ -123,11 +123,13 @@ pub use figure::{
 };
 pub use fonts::FontSet;
 pub use gridspec::GridSpec;
+pub use legend::Loc;
 pub use norm::Norm;
 #[cfg(feature = "fit")]
 pub use statbox::{Corner, StatBox};
 pub use style::{Sides, Style, TickDir};
 pub use timeaxis::{TimeFormat, format_time};
+pub use transform::Scale;
 
 #[cfg(test)]
 mod tests {

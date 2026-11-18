@@ -258,15 +258,28 @@ impl Builder {
 pub(crate) struct PdfPage {
     content: String,
     gstates: Vec<(u8, u8)>,
-    width: u32,
-    height: u32,
+    /// The media size in points.
+    width: f32,
+    height: f32,
 }
 
 /// Render the IR for a single page into a [`PdfPage`] (content stream + alpha
 /// state), ready to be assembled — alone or with others — into a document.
+///
+/// The IR is in pixels at `dpi`; the page is in points (1/72 in), so a
+/// 6.4 × 4.8 in figure is a 6.4 × 4.8 in page whatever the dpi, with text at
+/// its point size.
 #[must_use]
-pub(crate) fn page(groups: &[DrawGroup], width: u32, height: u32, bg: Color) -> PdfPage {
+pub(crate) fn page(groups: &[DrawGroup], width: u32, height: u32, bg: Color, dpi: f32) -> PdfPage {
     let mut b = Builder::new(height as f32);
+    let scale = if dpi.is_finite() && dpi > 0.0 {
+        72.0 / dpi
+    } else {
+        1.0
+    };
+    // Draw in pixels, scaled to points.
+    // Six decimals: `num`'s three would put 72/110 dpi off by 0.07%.
+    let _ = writeln!(b.content, "q\n{scale:.6} 0 0 {scale:.6} 0 0 cm");
 
     // Opaque background fills the page first (skip when transparent).
     if bg.a != 0 {
@@ -293,19 +306,20 @@ pub(crate) fn page(groups: &[DrawGroup], width: u32, height: u32, bg: Color) -> 
             b.content.push_str("Q\n");
         }
     }
+    b.content.push_str("Q\n");
 
     PdfPage {
         content: b.content,
         gstates: b.gstates,
-        width,
-        height,
+        width: width as f32 * scale,
+        height: height as f32 * scale,
     }
 }
 
-/// Render the IR to a single-page PDF document.
+/// Render the IR (pixels at `dpi`) to a single-page PDF document.
 #[must_use]
-pub fn render(groups: &[DrawGroup], width: u32, height: u32, bg: Color) -> Vec<u8> {
-    render_pages(&[page(groups, width, height, bg)])
+pub fn render(groups: &[DrawGroup], width: u32, height: u32, bg: Color, dpi: f32) -> Vec<u8> {
+    render_pages(&[page(groups, width, height, bg, dpi)])
 }
 
 /// Object numbers for one page: its `/Page`, its `/Contents`, and its per-page
@@ -392,7 +406,9 @@ pub(crate) fn render_pages(pages: &[PdfPage]) -> Vec<u8> {
             o.page,
             &format!(
                 "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {} {}]{resources} /Contents {} 0 R >>",
-                p.width, p.height, o.contents
+                num(p.width),
+                num(p.height),
+                o.contents
             ),
         );
         put(

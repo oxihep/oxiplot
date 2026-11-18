@@ -264,9 +264,17 @@ impl fmt::Display for ParseHistTypeError {
 
 impl std::error::Error for ParseHistTypeError {}
 
+/// A finite value, or 0 for NaN/±∞ (a bin that cannot be drawn shows empty
+/// rather than poisoning the whole outline).
+fn finite_or_zero(v: f64) -> f64 {
+    if v.is_finite() { v } else { 0.0 }
+}
+
 /// Build the staircase vertices for `edges`/`values` (data coords). When
-/// `baseline` is set, the first and last points drop to `y = 0`.
+/// `baseline` is set, the first and last points drop to `y = 0`. Non-finite
+/// values are drawn at 0.
 fn staircase(edges: &[f64], values: &[f64], baseline: bool) -> Vec<(f64, f64)> {
+    let values: Vec<f64> = values.iter().copied().map(finite_or_zero).collect();
     let n = values.len();
     let mut pts = Vec::with_capacity(2 * n + 2);
     if n == 0 || edges.len() < n + 1 {
@@ -312,20 +320,30 @@ impl StepArtist {
         if n == 0 || self.edges.len() < n + 1 {
             return None;
         }
-        let xmin = self.edges[0];
-        let xmax = self.edges[n];
-        let mut ymin = 0.0_f64;
-        let mut ymax = 0.0_f64;
+        // The bars stand on y = 0; each bin adds its value, error bar ends,
+        // and (for a log axis) its edges and value as positive candidates.
+        let mut b = Bounds::new(self.edges[0], self.edges[n], 0.0, 0.0);
         for i in 0..n {
-            let (mut lo, mut hi) = (self.values[i], self.values[i]);
-            if let Some(e) = &self.errs {
-                lo -= e[i];
-                hi += e[i];
+            let v = self.values[i];
+            if !v.is_finite() {
+                continue;
             }
-            ymin = ymin.min(lo);
-            ymax = ymax.max(hi);
+            let e = self.err(i);
+            let (lo, hi) = (self.edges[i], self.edges[i + 1]);
+            b = b
+                .union(Bounds::new(lo, hi, v - e, v + e))
+                .union(Bounds::new(lo, hi, v, v));
         }
-        Some(Bounds::new(xmin, xmax, ymin, ymax))
+        Some(b)
+    }
+
+    /// The error of bin `i`, or 0 when there are none or it is not finite.
+    fn err(&self, i: usize) -> f64 {
+        self.errs
+            .as_ref()
+            .and_then(|e| e.get(i))
+            .copied()
+            .map_or(0.0, finite_or_zero)
     }
 
     fn map(&self, t: &Transform, pts: &[(f64, f64)]) -> Vec<(f32, f32)> {
@@ -333,15 +351,19 @@ impl StepArtist {
     }
 
     fn draw_errorbars(&self, t: &Transform, style: &Style, g: &mut DrawGroup) {
-        let Some(errs) = &self.errs else { return };
+        if self.errs.is_none() {
+            return;
+        }
         let stroke = Stroke::new(self.color, style.px(1.0));
-        // Offset indexing into edges (i, i+1) keeps the explicit index clearest.
-        #[allow(clippy::needless_range_loop)]
         for i in 0..self.n() {
+            let (v, e) = (self.values[i], self.err(i));
+            if !v.is_finite() || e == 0.0 {
+                continue;
+            }
             let c = 0.5 * (self.edges[i] + self.edges[i + 1]);
             let cx = t.x(c);
-            let ytop = t.y(self.values[i] + errs[i]);
-            let ybot = t.y(self.values[i] - errs[i]);
+            let ytop = t.y(v + e);
+            let ybot = t.y(v - e);
             g.push(DrawCommand::Line {
                 p0: (cx, ybot),
                 p1: (cx, ytop),
@@ -376,6 +398,9 @@ impl StepArtist {
             HistType::Errorbar => {
                 let size = style.px(self.marker_size_pt);
                 for i in 0..n {
+                    if !self.values[i].is_finite() {
+                        continue;
+                    }
                     let c = 0.5 * (self.edges[i] + self.edges[i + 1]);
                     let p = t.pt((c, self.values[i]));
                     draw_marker(g, self.marker, p, size, Some(self.color), None);
@@ -383,9 +408,8 @@ impl StepArtist {
                 self.draw_errorbars(t, style, g);
             }
             HistType::Band => {
-                let errs = self.errs.clone().unwrap_or_else(|| vec![0.0; n]);
-                let upper: Vec<f64> = (0..n).map(|i| self.values[i] + errs[i]).collect();
-                let lower: Vec<f64> = (0..n).map(|i| self.values[i] - errs[i]).collect();
+                let upper: Vec<f64> = (0..n).map(|i| self.values[i] + self.err(i)).collect();
+                let lower: Vec<f64> = (0..n).map(|i| self.values[i] - self.err(i)).collect();
                 let mut up = staircase(&self.edges, &upper, false);
                 let mut lo = staircase(&self.edges, &lower, false);
                 lo.reverse();
@@ -452,14 +476,20 @@ impl ErrorbarArtist {
         self.xs.len().min(self.ys.len())
     }
 
+    /// The `(low, high)` error of point `i`; a missing or non-finite one is 0.
     fn err_at(pair: &Option<(Vec<f64>, Vec<f64>)>, i: usize) -> (f64, f64) {
         match pair {
             Some((lo, hi)) => (
-                lo.get(i).copied().unwrap_or(0.0),
-                hi.get(i).copied().unwrap_or(0.0),
+                lo.get(i).copied().map_or(0.0, finite_or_zero),
+                hi.get(i).copied().map_or(0.0, finite_or_zero),
             ),
             None => (0.0, 0.0),
         }
+    }
+
+    /// Whether point `i` can be drawn (both coordinates finite).
+    fn drawable(&self, i: usize) -> bool {
+        self.xs[i].is_finite() && self.ys[i].is_finite()
     }
 
     fn bounds(&self) -> Option<Bounds> {
@@ -472,7 +502,9 @@ impl ErrorbarArtist {
             }
             let (xl, xh) = Self::err_at(&self.xerr, i);
             let (yl, yh) = Self::err_at(&self.yerr, i);
-            let bb = Bounds::new(x - xl, x + xh, y - yl, y + yh);
+            // The point itself too: on a log axis its lower error bar may
+            // reach ≤ 0 while the point does not.
+            let bb = Bounds::new(x - xl, x + xh, y - yl, y + yh).union(Bounds::new(x, x, y, y));
             b = Some(match b {
                 None => bb,
                 Some(p) => p.union(bb),
@@ -487,7 +519,10 @@ impl ErrorbarArtist {
         let cap = style.px(self.capsize_pt);
 
         if let Some(wpt) = self.line_width_pt {
-            let pts: Vec<(f32, f32)> = (0..n).map(|i| t.pt((self.xs[i], self.ys[i]))).collect();
+            let pts: Vec<(f32, f32)> = (0..n)
+                .filter(|&i| self.drawable(i))
+                .map(|i| t.pt((self.xs[i], self.ys[i])))
+                .collect();
             if pts.len() >= 2 {
                 g.push(DrawCommand::Polyline {
                     pts,
@@ -497,9 +532,12 @@ impl ErrorbarArtist {
         }
 
         for i in 0..n {
+            if !self.drawable(i) {
+                continue;
+            }
             let (px, py) = t.pt((self.xs[i], self.ys[i]));
             let (yl, yh) = Self::err_at(&self.yerr, i);
-            if self.yerr.is_some() && (yl != 0.0 || yh != 0.0) {
+            if yl != 0.0 || yh != 0.0 {
                 let ytop = t.y(self.ys[i] + yh);
                 let ybot = t.y(self.ys[i] - yl);
                 g.push(DrawCommand::Line {
@@ -518,7 +556,7 @@ impl ErrorbarArtist {
                 }
             }
             let (xl, xh) = Self::err_at(&self.xerr, i);
-            if self.xerr.is_some() && (xl != 0.0 || xh != 0.0) {
+            if xl != 0.0 || xh != 0.0 {
                 let xleft = t.x(self.xs[i] - xl);
                 let xright = t.x(self.xs[i] + xh);
                 g.push(DrawCommand::Line {
@@ -541,7 +579,7 @@ impl ErrorbarArtist {
         // Markers on top.
         if self.marker != Marker::None {
             let size = style.px(self.marker_size_pt);
-            for i in 0..n {
+            for i in (0..n).filter(|&i| self.drawable(i)) {
                 let p = t.pt((self.xs[i], self.ys[i]));
                 draw_marker(g, self.marker, p, size, Some(self.color), None);
             }
@@ -616,7 +654,7 @@ impl MeshArtist {
                 // shows through, instead of being painted the colormap's value-0
                 // color (ROOT COLZ / mplhep `cmin` behavior). Values the norm
                 // cannot place (e.g. ≤ 0 under a log norm) are likewise skipped.
-                if col[iy] == 0.0 {
+                if col[iy] == 0.0 || !col[iy].is_finite() {
                     continue;
                 }
                 let Some(frac) = self.norm.normalize(col[iy], self.vmin, self.vmax) else {
@@ -663,6 +701,66 @@ impl Artist {
             Artist::Step(a) => a.draw(t, style, g),
             Artist::Errorbar(a) => a.draw(t, style, g),
             Artist::Mesh(a) => a.draw(t, style, g),
+        }
+    }
+
+    /// Points along the artist, in pixels, for judging how much of it a box
+    /// would hide (the legend's [`Loc::Best`](crate::Loc::Best)). Outlines
+    /// are sampled along their length, so a wide flat bin still counts.
+    pub(crate) fn sample_points(&self, t: &Transform) -> Vec<(f32, f32)> {
+        /// Points per segment.
+        const STEPS: usize = 8;
+        let along = |pts: &[(f64, f64)]| -> Vec<(f32, f32)> {
+            let px: Vec<(f32, f32)> = pts
+                .iter()
+                .filter(|(x, y)| x.is_finite() && y.is_finite())
+                .map(|&p| t.pt(p))
+                .collect();
+            if px.len() < 2 {
+                return px;
+            }
+            px.windows(2)
+                .flat_map(|w| {
+                    (0..STEPS).map(move |k| {
+                        let f = k as f32 / STEPS as f32;
+                        (
+                            w[0].0 + f * (w[1].0 - w[0].0),
+                            w[0].1 + f * (w[1].1 - w[0].1),
+                        )
+                    })
+                })
+                .chain(px.last().copied())
+                .collect()
+        };
+        match self {
+            Artist::Line(a) => along(
+                &a.xs
+                    .iter()
+                    .copied()
+                    .zip(a.ys.iter().copied())
+                    .collect::<Vec<_>>(),
+            ),
+            Artist::Step(a) => {
+                let mut pts = along(&staircase(&a.edges, &a.values, false));
+                for i in 0..a.n() {
+                    let (v, e) = (a.values[i], a.err(i));
+                    if v.is_finite() && e > 0.0 {
+                        let c = 0.5 * (a.edges[i] + a.edges[i + 1]);
+                        pts.push(t.pt((c, v + e)));
+                    }
+                }
+                pts
+            }
+            Artist::Errorbar(a) => (0..a.n())
+                .filter(|&i| a.drawable(i))
+                .flat_map(|i| {
+                    let (x, y) = (a.xs[i], a.ys[i]);
+                    let (yl, yh) = ErrorbarArtist::err_at(&a.yerr, i);
+                    [t.pt((x, y)), t.pt((x, y + yh)), t.pt((x, y - yl))]
+                })
+                .collect(),
+            // A heatmap fills the frame: there is no spot it leaves free.
+            Artist::Mesh(_) => Vec::new(),
         }
     }
 

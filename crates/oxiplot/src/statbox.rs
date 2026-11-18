@@ -272,9 +272,9 @@ pub(crate) fn draw_stats(
         ),
         Corner::LowerLeft => (frame.x + margin, frame.bottom() - margin - box_h),
     };
-    // Stack beneath the legend when both are anchored top-right.
-    if data.corner == Corner::UpperRight
-        && let Some(lr) = legend_rect
+    // Stack beneath the legend when the two would overlap (both top-right).
+    if let Some(lr) = legend_rect
+        && overlaps(lr, Rect::new(x0, y0, box_w, box_h))
     {
         y0 = lr.bottom() + 0.5 * fs;
     }
@@ -311,6 +311,11 @@ pub(crate) fn draw_stats(
             0.0,
         ));
     }
+}
+
+/// Whether two rectangles share any area.
+fn overlaps(a: Rect, b: Rect) -> bool {
+    a.x < b.right() && b.x < a.right() && a.y < b.bottom() && b.y < a.bottom()
 }
 
 #[cfg(test)]

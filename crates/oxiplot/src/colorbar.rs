@@ -16,6 +16,31 @@ pub(crate) struct ColorbarSpec {
     pub label: Option<String>,
 }
 
+/// The bar's ticks at a bar height of `h` pixels.
+fn ticks(spec: &ColorbarSpec, h: f32) -> Vec<(f64, String)> {
+    let target = ((h / 50.0).round() as usize).clamp(3, 9);
+    spec.norm.colorbar_ticks(spec.vmin, spec.vmax, target)
+}
+
+/// The width right of the bar that its tick marks, tick labels and label take
+/// at a bar height of `h` pixels, so the axes can leave exactly that room.
+pub(crate) fn outer_width(spec: &ColorbarSpec, s: &Style, h: f32) -> f32 {
+    let tlab = s.px(s.tick_label_size_pt);
+    let widest = ticks(spec, h)
+        .iter()
+        .map(|(_, l)| text::measure(&s.fonts, l, tlab, FontStyle::Regular).width)
+        .fold(0.0_f32, f32::max);
+    let mut w = s.px(s.tick_major_len_pt) + s.px(s.tick_pad_pt) + widest;
+    if let Some(lbl) = &spec.label {
+        let (_, a, d) = crate::mathtext::label_extents(&s.fonts, lbl, s.px(s.label_size_pt));
+        w += s.px(LABEL_PAD_PT) + a + d;
+    }
+    w
+}
+
+/// Gap between the tick labels and the colorbar label, in points.
+const LABEL_PAD_PT: f32 = 4.0;
+
 /// Draw the colorbar gradient, frame, ticks, labels, and optional axis label.
 pub(crate) fn draw_colorbar(g: &mut DrawGroup, rect: Rect, spec: &ColorbarSpec, s: &Style) {
     let fg = s.fg_color;
@@ -43,8 +68,7 @@ pub(crate) fn draw_colorbar(g: &mut DrawGroup, rect: Rect, spec: &ColorbarSpec, 
 
     // Ticks + labels on the right edge. The norm chooses the tick values
     // (log/symlog give decade ticks) and their fractional position along the bar.
-    let target = ((rect.h / 50.0).round() as usize).clamp(3, 9);
-    let ticks = spec.norm.colorbar_ticks(spec.vmin, spec.vmax, target);
+    let ticks = ticks(spec, rect.h);
     let tlen = s.px(s.tick_major_len_pt);
     let pad = s.px(s.tick_pad_pt);
     let tlab = s.px(s.tick_label_size_pt);
@@ -78,7 +102,9 @@ pub(crate) fn draw_colorbar(g: &mut DrawGroup, rect: Rect, spec: &ColorbarSpec, 
 
     // Colorbar label (rotated), to the right of the tick labels.
     if let Some(lbl) = &spec.label {
-        let x = rect.right() + tlen + pad + max_w + s.px(6.0);
+        let x = rect.right() + tlen + pad + max_w + s.px(LABEL_PAD_PT);
+        // Rotated to read upwards, the label's top faces the bar: anchor it
+        // there so the label lies right of the tick labels, not across them.
         crate::mathtext::layout_label(
             g,
             &s.fonts,
@@ -88,7 +114,7 @@ pub(crate) fn draw_colorbar(g: &mut DrawGroup, rect: Rect, spec: &ColorbarSpec, 
             s.px(s.label_size_pt),
             fg,
             HAlign::Center,
-            VAlign::Baseline,
+            VAlign::Top,
             -90.0,
         );
     }

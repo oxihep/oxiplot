@@ -96,6 +96,103 @@ fn occurrences(haystack: &str, needle: &str) -> usize {
     haystack.matches(needle).count()
 }
 
+// --- reading geometry back out of an SVG ---------------------------------------
+
+/// The value of attribute `name` in an SVG element's text.
+fn attr(el: &str, name: &str) -> Option<String> {
+    let key = format!(" {name}=\"");
+    let start = el.find(&key)? + key.len();
+    Some(el[start..].split('"').next()?.to_string())
+}
+
+fn num_attr(el: &str, name: &str) -> f32 {
+    attr(el, name)
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(f32::NAN)
+}
+
+/// Every `<tag …/>` element in `svg`, as its text.
+fn elements<'a>(svg: &'a str, tag: &str) -> Vec<&'a str> {
+    let open = format!("<{tag} ");
+    svg.match_indices(&open)
+        .map(|(i, _)| {
+            let end = svg[i..].find("/>").map_or(svg.len(), |e| i + e);
+            &svg[i..end]
+        })
+        .collect()
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Frame {
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+}
+
+impl Frame {
+    fn right(&self) -> f32 {
+        self.x + self.w
+    }
+    fn bottom(&self) -> f32 {
+        self.y + self.h
+    }
+    fn contains(&self, (x, y): (f32, f32)) -> bool {
+        x >= self.x - 0.5
+            && x <= self.right() + 0.5
+            && y >= self.y - 0.5
+            && y <= self.bottom() + 0.5
+    }
+}
+
+/// The panels' frames: the clip rectangles, once per panel (a panel clips
+/// its grid and its data to the same frame).
+fn frames(svg: &str) -> Vec<Frame> {
+    let mut out: Vec<Frame> = Vec::new();
+    for clip in svg.split("<clipPath ").skip(1) {
+        let rect = elements(clip, "rect")[0];
+        let f = Frame {
+            x: num_attr(rect, "x"),
+            y: num_attr(rect, "y"),
+            w: num_attr(rect, "width"),
+            h: num_attr(rect, "height"),
+        };
+        if out.last() != Some(&f) {
+            out.push(f);
+        }
+    }
+    out
+}
+
+/// The vertices of every `<tag points="…">` element (polyline, polygon).
+fn point_lists(svg: &str, tag: &str) -> Vec<Vec<(f32, f32)>> {
+    elements(svg, tag)
+        .iter()
+        .map(|el| {
+            attr(el, "points")
+                .unwrap_or_default()
+                .split_whitespace()
+                .map(|p| {
+                    let (x, y) = p.split_once(',').unwrap();
+                    (x.parse().unwrap(), y.parse().unwrap())
+                })
+                .collect()
+        })
+        .collect()
+}
+
+/// The centres of every `<circle>` (markers).
+fn circles(svg: &str) -> Vec<(f32, f32)> {
+    elements(svg, "circle")
+        .iter()
+        .map(|c| (num_attr(c, "cx"), num_attr(c, "cy")))
+        .collect()
+}
+
+fn close(a: f32, b: f32) -> bool {
+    (a - b).abs() < 0.6
+}
+
 /// A unique scratch dir for a test that writes files.
 fn scratch(tag: &str) -> std::path::PathBuf {
     let dir = std::env::temp_dir().join(format!("oxiplot_test_{tag}"));
@@ -329,22 +426,60 @@ fn legend_adds_a_frame_and_label_glyphs() {
 
 #[test]
 fn all_histtypes_render() {
-    let h = gauss_hist();
-    for t in [
-        HistType::Step,
-        HistType::Fill,
-        HistType::Errorbar,
-        HistType::Band,
-    ] {
+    let h = gauss_hist(); // 40 bins over [50, 130)
+    let n = 40;
+    let svg_of = |t: HistType| {
         let mut ax = Axes::new();
-        ax.hist_with(&h, HistOpts::new().histtype(t).yerr().label("h"));
-        let svg = ax.to_svg_string();
-        assert!(
-            svg.starts_with("<svg") && svg.ends_with("</svg>"),
-            "{t} failed"
-        );
-        assert!(occurrences(&svg, "<path") > 0, "{t} drew nothing");
-    }
+        ax.hist_with(&h, HistOpts::new().histtype(t).yerr());
+        ax.to_svg_string()
+    };
+
+    // A step outline: 2n + 2 vertices, from the frame's bottom-left corner
+    // (the edges are sticky, the bars stand on 0) to its bottom-right.
+    let svg = svg_of(HistType::Step);
+    let f = frames(&svg)[0];
+    let outline = point_lists(&svg, "polyline")
+        .into_iter()
+        .find(|p| p.len() == 2 * n + 2)
+        .expect("a step outline");
+    assert!(close(outline[0].0, f.x) && close(outline[0].1, f.bottom()));
+    let last = outline[outline.len() - 1];
+    assert!(close(last.0, f.right()) && close(last.1, f.bottom()));
+    assert!(
+        outline.iter().all(|&p| f.contains(p)),
+        "the outline leaves the frame"
+    );
+
+    // A fill: the same outline, closed as a polygon.
+    let svg = svg_of(HistType::Fill);
+    assert!(
+        point_lists(&svg, "polygon")
+            .iter()
+            .any(|p| p.len() == 2 * n + 2)
+    );
+
+    // Errorbar: one marker per bin, at the bin centres, inside the frame.
+    let svg = svg_of(HistType::Errorbar);
+    let f = frames(&svg)[0];
+    let markers = circles(&svg);
+    assert_eq!(markers.len(), n);
+    assert!(markers.iter().all(|&c| f.contains(c)));
+    let dx = markers[1].0 - markers[0].0;
+    assert!(
+        close(markers[0].0 - f.x, dx / 2.0),
+        "the first marker is off its bin centre"
+    );
+
+    // Band: upper and lower staircases (2n vertices each), translucent.
+    let svg = svg_of(HistType::Band);
+    let band = elements(&svg, "polygon")
+        .into_iter()
+        .find(|el| attr(el, "fill-opacity").is_some_and(|o| o.starts_with("0.3")))
+        .expect("a translucent band");
+    assert_eq!(
+        attr(band, "points").unwrap().split_whitespace().count(),
+        4 * n
+    );
 }
 
 #[test]
@@ -358,14 +493,33 @@ fn graph_profile_plot_and_function_render() {
         .unwrap()
         .with_y_errors_asym(vec![0.3, 0.1, 0.2], vec![0.1, 0.3, 0.2])
         .unwrap();
-    for g in [&sym, &asym] {
+    for (g, n) in [(&sym, 8), (&asym, 3)] {
         let mut ax = Axes::new();
         ax.errorbar(g);
-        assert!(ax.to_svg_string().contains("<svg"));
+        let svg = ax.to_svg_string();
+        let f = frames(&svg)[0];
+        let markers = circles(&svg);
+        assert_eq!(markers.len(), n);
+        assert!(markers.iter().all(|&c| f.contains(c)));
+        // An x and a y error bar per point.
+        let bars = elements(&svg, "line")
+            .iter()
+            .filter(|l| f.contains((num_attr(l, "x1"), num_attr(l, "y1"))))
+            .filter(|l| {
+                let (x1, x2) = (num_attr(l, "x1"), num_attr(l, "x2"));
+                let (y1, y2) = (num_attr(l, "y1"), num_attr(l, "y2"));
+                markers.iter().any(|&(cx, cy)| {
+                    (close(x1, cx) && close(x2, cx)) || (close(y1, cy) && close(y2, cy))
+                })
+            })
+            .count();
+        assert!(bars >= 2 * n, "{bars} error bars for {n} points");
     }
 
     let mut ax = Axes::new();
     ax.profile(&profile());
+    // One point per bin.
+    assert_eq!(circles(&ax.to_svg_string()).len(), 10);
     assert!(
         ax.to_png_bytes(SaveOpts::new())
             .unwrap()
@@ -408,12 +562,22 @@ fn hist2d_draws_a_mesh_and_colorbar() {
     let mut ax = Axes::new();
     ax.hist2d_with(&th2(), Hist2dOpts::new().label("entries"));
     let svg = ax.to_svg_string();
-    // A 20x20 mesh plus a colorbar gradient => lots of filled rects.
-    assert!(
-        occurrences(&svg, "<rect") > 100,
-        "expected a dense color mesh, got {} rects",
-        occurrences(&svg, "<rect")
-    );
+    let f = frames(&svg)[0];
+    let rects: Vec<(f32, f32)> = elements(&svg, "rect")
+        .iter()
+        .filter(|r| attr(r, "fill").is_some_and(|c| c != "none"))
+        .map(|r| (num_attr(r, "x"), num_attr(r, "width")))
+        .collect();
+    // Every one of the 20 × 20 cells is filled, inside the frame…
+    let cells = rects
+        .iter()
+        .filter(|&&(x, w)| x >= f.x - 1.0 && x + w <= f.right() + 1.0 && w < f.w / 10.0)
+        .count();
+    assert_eq!(cells, 400);
+    // …and the colorbar's gradient sits right of the frame, on the figure.
+    let bar = rects.iter().filter(|&&(x, _)| x > f.right()).count();
+    assert!(bar >= 100, "{bar} colorbar strips");
+    assert!(rects.iter().all(|&(x, w)| x + w <= 640.0));
 }
 
 #[test]
@@ -463,9 +627,14 @@ fn figure_grid_renders_all_panels() {
     axs[1].errorbar(&graph());
     axs[2].hist2d(&th2());
     axs[3].plot(&[0.0, 1.0, 2.0], &[0.0, 1.0, 0.5]).unwrap();
-    let png = fig.with_axes(axs).to_png_bytes(SaveOpts::new()).unwrap();
-    let (w, hgt) = png_dims(&png);
-    assert!(w >= 600 && hgt >= 400);
+    let fig = fig.with_axes(axs);
+    let png = fig.to_png_bytes(SaveOpts::new()).unwrap();
+    assert_eq!(png_dims(&png), (640, 480));
+    // Four frames in a 2 × 2 arrangement, none overlapping.
+    let f = frames(&fig.to_svg_string());
+    assert_eq!(f.len(), 4);
+    assert!(close(f[0].x, f[2].x) && close(f[1].x, f[3].x) && f[0].right() < f[1].x);
+    assert!(close(f[0].y, f[1].y) && close(f[2].y, f[3].y) && f[0].bottom() < f[2].y);
 }
 
 #[test]
@@ -483,7 +652,12 @@ fn shared_axes_and_suptitle_add_content() {
     };
     let plain = build(false);
     let titled = build(true);
-    assert!(plain.starts_with("<svg") && titled.starts_with("<svg"));
+    // Side by side, the same height; a suptitle that fits the top margin
+    // leaves them where they are.
+    let (p, t) = (frames(&plain), frames(&titled));
+    assert_eq!((p.len(), t.len()), (2, 2));
+    assert!(close(p[0].y, p[1].y) && close(p[0].h, p[1].h) && p[0].right() < p[1].x);
+    assert_eq!(t, p);
     // The suptitle is typeset as extra glyph paths.
     assert!(
         occurrences(&titled, "<path") > occurrences(&plain, "<path"),
@@ -505,8 +679,20 @@ fn ratio_subplots_renders() {
     ratio.ylabel("data/MC");
     ratio.xlabel("$m$ [GeV]");
     ratio.grid();
-    let pdf = fig.ratio(main, ratio).to_pdf_bytes();
+    let fig = fig.ratio(main, ratio);
+    let pdf = fig.to_pdf_bytes();
     assert!(pdf.starts_with(b"%PDF-1.4") && pdf.ends_with(b"%%EOF\n"));
+    // The main panel over the ratio panel: touching, aligned, 3 : 1.
+    let f = frames(&fig.to_svg_string());
+    assert_eq!(f.len(), 2);
+    assert!(close(f[0].bottom(), f[1].y), "the panels do not touch");
+    assert!(close(f[0].x, f[1].x) && close(f[0].w, f[1].w));
+    assert!(
+        (f[0].h / f[1].h - 3.0).abs() < 0.05,
+        "{} : {}",
+        f[0].h,
+        f[1].h
+    );
 }
 
 #[test]
@@ -530,7 +716,9 @@ fn figure_in_memory_render_all_formats() {
 #[cfg(feature = "png")] // renders PNG too
 fn empty_axes_renders_without_panicking() {
     let ax = Axes::new();
-    assert!(ax.to_svg_string().contains("<svg"));
+    let svg = ax.to_svg_string();
+    assert_eq!(frames(&svg).len(), 1);
+    assert!(circles(&svg).is_empty() && point_lists(&svg, "polyline").is_empty());
     assert!(
         ax.to_png_bytes(SaveOpts::new())
             .unwrap()
