@@ -138,10 +138,17 @@ pub(crate) fn legend_rect(ax: &Axes, box_: Rect) -> Option<Rect> {
             // matplotlib's "best": the spot covering the fewest data points;
             // ties go to the earlier candidate.
             let pts = ax.data_points_px(box_);
+            // The fit-statistics box counts as more data than any plot holds:
+            // a spot that would cover it is taken only if every spot does.
+            let stats = ax.stat_box_rect(box_);
             let covered = |r: &Rect| {
+                let on_stats = stats.is_some_and(|s| {
+                    r.x < s.right() && s.x < r.right() && r.y < s.bottom() && s.y < r.bottom()
+                });
                 pts.iter()
                     .filter(|&&(x, y)| x >= r.x && x <= r.right() && y >= r.y && y <= r.bottom())
                     .count()
+                    + if on_stats { pts.len() + 1 } else { 0 }
             };
             Loc::CANDIDATES
                 .iter()
@@ -308,6 +315,33 @@ mod placement_tests {
     fn best_prefers_the_upper_right_when_it_is_free() {
         let ax = with_line(&[0.0, 1.0, 2.0], &[1.0, 0.2, 0.0]);
         assert!(is_upper_right(legend_rect(&ax, FRAME).unwrap()));
+    }
+
+    #[test]
+    #[cfg(feature = "fit")]
+    fn best_keeps_off_the_fit_statistics_box() {
+        // Data falling to the right leaves the upper right free, but the stat
+        // box sits there: the legend goes elsewhere, and the box keeps its
+        // corner instead of being pushed down.
+        let model = oxifit::Model::gaussian("g").with_params(vec![1.0, 0.0, 1.0]);
+        let result = oxifit::FitResult {
+            params: vec![1.0, 0.0, 1.0],
+            errors: vec![0.1, 0.1, 0.1],
+            minos: None,
+            covariance: None,
+            chi2: 1.0,
+            ndf: 1,
+            valid: true,
+        };
+        let mut ax = with_line(&[0.0, 1.0, 2.0], &[1.0, 0.2, 0.0]);
+        ax.fit_stats(&model, &result);
+        let stats = ax.stat_box_rect(FRAME).unwrap();
+        let legend = legend_rect(&ax, FRAME).unwrap();
+        let overlap = legend.x < stats.right()
+            && stats.x < legend.right()
+            && legend.y < stats.bottom()
+            && stats.y < legend.bottom();
+        assert!(!overlap, "legend {legend:?} over the stat box {stats:?}");
     }
 
     #[test]

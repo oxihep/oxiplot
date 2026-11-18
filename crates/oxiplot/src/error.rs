@@ -26,6 +26,9 @@ pub enum Error {
         /// Its actual length.
         found: usize,
     },
+    /// Histograms that must share a binning (the layers of a stack) do not;
+    /// nothing was drawn.
+    BinningMismatch(String),
     /// The output needs a crate feature this build does not enable.
     MissingFeature {
         /// The output that was asked for (e.g. `"PNG"`).
@@ -56,6 +59,7 @@ impl fmt::Display for Error {
                 f,
                 "length mismatch: {what} has length {found}, expected {expected}"
             ),
+            Error::BinningMismatch(m) => write!(f, "binning mismatch: {m}"),
             Error::MissingFeature { output, feature } => write!(
                 f,
                 "{output} output needs the `{feature}` feature of oxiplot"

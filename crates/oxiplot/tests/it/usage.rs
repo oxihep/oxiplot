@@ -178,3 +178,15 @@ fn large_and_tiny_values_label_cleanly() {
     ax.plot(&[100000.0, 100001.0], &[1.0e-5, 1.1e-5]).unwrap();
     assert_valid_svg(&ax.to_svg_string());
 }
+
+#[test]
+fn a_stack_over_category_bins() {
+    let ee = Binned1D::categories(&["ee", "μμ", "eμ"], vec![10.0, 12.0, 2.0]).unwrap();
+    let mm = Binned1D::categories(&["ee", "μμ", "eμ"], vec![4.0, 5.0, 1.0]).unwrap();
+    let mut ax = Axes::new();
+    ax.hist_stack_with(&[&ee, &mm], oxiplot::StackOpts::new().labels(["Z", "top"]))
+        .unwrap();
+    ax.legend();
+    assert_valid_svg(&ax.to_svg_string());
+    assert_valid_pdf(&ax.to_pdf_bytes());
+}

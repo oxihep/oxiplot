@@ -89,6 +89,9 @@ pub struct Axes {
     pub(crate) ytick_area: Option<f32>,
     /// Where the legend goes.
     legend_loc: Loc,
+    /// Category labels at the bin centres, when the x axis is categorical
+    /// (adopted from plotted data that names its bins).
+    x_categories: Option<Vec<(f64, String)>>,
     /// How each axis maps values onto its length.
     xscale: Scale,
     yscale: Scale,
@@ -127,6 +130,7 @@ impl Axes {
             ylabel_prune: (false, false),
             ytick_area: None,
             legend_loc: Loc::Best,
+            x_categories: None,
             xscale: Scale::Linear,
             yscale: Scale::Linear,
             #[cfg(feature = "fit")]
@@ -415,6 +419,29 @@ impl Axes {
         self.x_time.as_ref()
     }
 
+    /// Take category labels from plotted data, unless some are set already:
+    /// each label goes at the centre of its bin.
+    fn adopt_categories(&mut self, edges: &[f64], labels: Option<Vec<String>>) {
+        if self.x_categories.is_some() {
+            return;
+        }
+        if let Some(labels) = labels.filter(|l| edges.len() == l.len() + 1) {
+            let centres = edges.windows(2).map(|w| 0.5 * (w[0] + w[1]));
+            self.x_categories = Some(centres.zip(labels).collect());
+        }
+    }
+
+    /// The fit-statistics box's rectangle on a frame at `box_`, if there is
+    /// one: what [`Loc::Best`] keeps the legend off.
+    pub(crate) fn stat_box_rect(&self, box_: Rect) -> Option<Rect> {
+        #[cfg(feature = "fit")]
+        if let Some(data) = &self.stats {
+            return crate::statbox::home_rect(self, box_, data);
+        }
+        let _ = box_;
+        None
+    }
+
     /// Take the time format from plotted data, unless the caller set one.
     fn adopt_time_format(&mut self, format: Option<String>) {
         if let (None, Some(format)) = (&self.x_time, format) {
@@ -443,6 +470,7 @@ impl Axes {
     pub fn hist_with(&mut self, h: &impl Hist1dData, opts: HistOpts) -> &mut Self {
         self.adopt_time_format(h.x_time_format());
         let edges = h.edges();
+        self.adopt_categories(&edges, h.x_labels());
         let values = h.values();
         let n = values.len();
         let color = opts.color.unwrap_or_else(|| self.next_color());
@@ -473,6 +501,93 @@ impl Axes {
             label: opts.label,
         }));
         self
+    }
+
+    /// Stack histograms that share a binning (mplhep's
+    /// `histplot(stack=True)`): each layer is drawn on top of the ones before
+    /// it, filled, in the next cycle colours. See
+    /// [`hist_stack_with`](Axes::hist_stack_with) for labels and colours.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::BinningMismatch`](crate::Error::BinningMismatch) if the layers
+    /// do not all have the first one's edges; nothing is drawn.
+    pub fn hist_stack(&mut self, layers: &[&dyn Hist1dData]) -> crate::Result<&mut Self> {
+        self.hist_stack_with(layers, StackOpts::default())
+    }
+
+    /// Stack histograms with explicit options: the histogram type, a legend
+    /// label and colour per layer.
+    ///
+    /// Layers are given bottom to top. The legend lists them top to bottom,
+    /// in the order they appear in the stack. To show the total's
+    /// uncertainty, draw it on top with `hist_with(&total,
+    /// HistOpts::new().histtype(HistType::Band))`.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::BinningMismatch`](crate::Error::BinningMismatch) if the layers
+    /// do not all have the first one's edges; nothing is drawn.
+    ///
+    /// # Examples
+    /// ```
+    /// use oxiplot::{Axes, Binned1D, StackOpts};
+    /// let edges = vec![0.0, 1.0, 2.0, 3.0];
+    /// let ttbar = Binned1D::new(edges.clone(), vec![5.0, 9.0, 4.0])?;
+    /// let dy = Binned1D::new(edges, vec![20.0, 12.0, 6.0])?;
+    /// let mut ax = Axes::new();
+    /// ax.hist_stack_with(&[&dy, &ttbar], StackOpts::new().labels(["DY", "tt"]))?;
+    /// ax.legend();
+    /// # Ok::<(), oxiplot::Error>(())
+    /// ```
+    pub fn hist_stack_with(
+        &mut self,
+        layers: &[&dyn Hist1dData],
+        opts: StackOpts,
+    ) -> crate::Result<&mut Self> {
+        let Some(first) = layers.first() else {
+            return Ok(self);
+        };
+        let edges = first.edges();
+        let n = edges.len().saturating_sub(1);
+        for (k, layer) in layers.iter().enumerate().skip(1) {
+            if layer.edges() != edges {
+                return Err(crate::Error::BinningMismatch(format!(
+                    "stack layer {k} does not have layer 0's bin edges"
+                )));
+            }
+        }
+        // Running totals: layer k is drawn at the sum of layers 0..=k.
+        let mut totals = Vec::with_capacity(layers.len());
+        let mut sum = vec![0.0; n];
+        for layer in layers {
+            for (s, v) in sum.iter_mut().zip(layer.values()) {
+                if v.is_finite() {
+                    *s += v;
+                }
+            }
+            totals.push(sum.clone());
+        }
+        let colors: Vec<Color> = (0..layers.len())
+            .map(|k| {
+                opts.colors
+                    .get(k)
+                    .copied()
+                    .unwrap_or_else(|| self.next_color())
+            })
+            .collect();
+        // Top layer first, so each lower (shorter) fill is drawn over the one
+        // above it, and the legend reads top to bottom.
+        for k in (0..layers.len()).rev() {
+            let mut h = HistOpts::new().histtype(opts.histtype).color(colors[k]);
+            if let Some(label) = opts.labels.get(k) {
+                h = h.label(label.clone());
+            }
+            let total = crate::data::Binned1D::new(edges.clone(), totals[k].clone())?;
+            self.hist_with(&total, h);
+        }
+        self.adopt_categories(&edges, first.x_labels());
+        Ok(self)
     }
 
     /// Plot points with their error bars: a `Graph` (any error variant), or any
@@ -551,6 +666,7 @@ impl Axes {
     pub fn profile_with(&mut self, tp: &impl Hist1dData, opts: ErrorbarOpts) -> &mut Self {
         self.adopt_time_format(tp.x_time_format());
         let edges = tp.edges();
+        self.adopt_categories(&edges, tp.x_labels());
         let vals = tp.values();
         let n = vals.len();
         if edges.len() < n + 1 {
@@ -882,6 +998,15 @@ impl Axes {
         }
     }
 
+    /// Minor x ticks: none on a category axis, where they would mean nothing.
+    fn x_minor_ticks(&self, xmin: f64, xmax: f64, majors: &[f64]) -> Vec<f64> {
+        if self.x_categories.is_some() {
+            Vec::new()
+        } else {
+            Self::minor_ticks(xmin, xmax, majors, self.xscale)
+        }
+    }
+
     /// The width of a tick label as drawn (`$…$` labels are typeset).
     fn tick_label_width(&self, label: &str) -> f32 {
         let s = &self.style;
@@ -922,6 +1047,16 @@ impl Axes {
         let ytarget = ((box_.h / 50.0).round() as usize).clamp(3, 9);
         // A time axis steps in minutes, hours or days, not in "nice" decimals.
         let (xticks, xlabels) = match (&self.x_time, self.xscale) {
+            // A category axis: one label at each bin centre in view.
+            _ if self.x_categories.is_some() => {
+                let (lo, hi) = (xmin.min(xmax), xmin.max(xmax));
+                self.x_categories
+                    .iter()
+                    .flatten()
+                    .filter(|(c, _)| (lo..=hi).contains(c))
+                    .map(|(c, l)| (*c, l.clone()))
+                    .unzip()
+            }
             (Some(time), _) => {
                 let ticks = crate::timeaxis::time_ticks(xmin, xmax, xtarget);
                 let labels = ticks.iter().map(|&v| time.label(v)).collect();
@@ -1135,7 +1270,7 @@ impl Axes {
             if self.grid_minor {
                 let gminor =
                     Stroke::line(s.grid_color.with_alpha(0.5), s.px(s.grid_width_pt * 0.7));
-                for &xv in &Self::minor_ticks(xmin, xmax, &xticks, self.xscale) {
+                for &xv in &self.x_minor_ticks(xmin, xmax, &xticks) {
                     let px = t.x(xv);
                     grid.push(DrawCommand::Line {
                         p0: (px, box_.y),
@@ -1219,7 +1354,7 @@ impl Axes {
         // minor width against a 0.8 pt major).
         if s.minor_ticks {
             let minorstroke = Stroke::line(fg, s.px(s.tick_major_width_pt * 0.75));
-            let xmin_t = Self::minor_ticks(xmin, xmax, &xticks, self.xscale);
+            let xmin_t = self.x_minor_ticks(xmin, xmax, &xticks);
             let ymin_t = Self::minor_ticks(ymin, ymax, &yticks, self.yscale);
             for &xv in &xmin_t {
                 let px = t.x(xv);
@@ -1569,6 +1704,53 @@ impl HistOpts {
     }
 }
 
+/// Options for [`Axes::hist_stack_with`]: how the layers are drawn, and a
+/// legend label and colour per layer (bottom to top; missing ones fall back
+/// to no label and the next cycle colour).
+#[derive(Debug, Clone)]
+pub struct StackOpts {
+    pub(crate) histtype: HistType,
+    pub(crate) labels: Vec<String>,
+    pub(crate) colors: Vec<Color>,
+}
+
+impl Default for StackOpts {
+    fn default() -> Self {
+        StackOpts {
+            histtype: HistType::Fill,
+            labels: Vec::new(),
+            colors: Vec::new(),
+        }
+    }
+}
+
+impl StackOpts {
+    /// New default options: filled layers in the cycle colours.
+    #[must_use]
+    pub fn new() -> Self {
+        StackOpts::default()
+    }
+    /// How each layer is drawn ([`HistType::Fill`] by default; `Step` draws
+    /// the running totals as outlines).
+    #[must_use]
+    pub fn histtype(mut self, t: HistType) -> Self {
+        self.histtype = t;
+        self
+    }
+    /// A legend label per layer, bottom to top.
+    #[must_use]
+    pub fn labels<S: Into<String>>(mut self, labels: impl IntoIterator<Item = S>) -> Self {
+        self.labels = labels.into_iter().map(Into::into).collect();
+        self
+    }
+    /// A colour per layer, bottom to top.
+    #[must_use]
+    pub fn colors(mut self, colors: impl IntoIterator<Item = Color>) -> Self {
+        self.colors = colors.into_iter().collect();
+        self
+    }
+}
+
 /// Options for [`Axes::errorbar_with`]. Build with [`ErrorbarOpts::new`] and the
 /// chained setters. Defaults to the HEP data-point look: round markers,
 /// vertical/horizontal error bars, no caps, no connecting line.
@@ -1903,6 +2085,60 @@ mod tests {
             panic!("not points")
         };
         assert_eq!(p.color, Color::BLACK);
+    }
+
+    #[test]
+    fn a_stack_draws_running_totals_top_layer_first() {
+        let a = hist(&[0.0, 1.0, 2.0], &[1.0, 2.0]);
+        let b = hist(&[0.0, 1.0, 2.0], &[10.0, 20.0]);
+        let mut ax = Axes::new();
+        ax.hist_stack_with(&[&a, &b], StackOpts::new().labels(["a", "b"]))
+            .unwrap();
+        let tops: Vec<Vec<f64>> = ax
+            .artists
+            .iter()
+            .map(|art| match art {
+                Artist::Step(s) => s.values.clone(),
+                _ => panic!("not a histogram"),
+            })
+            .collect();
+        assert_eq!(tops, [vec![11.0, 22.0], vec![1.0, 2.0]]);
+        let labels: Vec<String> = ax.legend_items().into_iter().map(|i| i.label).collect();
+        assert_eq!(labels, ["b", "a"], "the legend reads top to bottom");
+        let (lo, hi) = ax.resolved_ylim();
+        assert!(lo == 0.0 && hi > 22.0);
+    }
+
+    #[test]
+    fn a_stack_refuses_layers_of_another_binning() {
+        let a = hist(&[0.0, 1.0, 2.0], &[1.0, 2.0]);
+        let b = hist(&[0.0, 1.5, 2.0], &[1.0, 2.0]);
+        let mut ax = Axes::new();
+        let Err(err) = ax.hist_stack(&[&a, &b]) else {
+            panic!("layers of another binning were stacked");
+        };
+        assert!(matches!(err, crate::Error::BinningMismatch(_)), "{err}");
+        assert!(ax.artists.is_empty(), "nothing is drawn");
+        // No layers: nothing to do.
+        assert!(ax.hist_stack(&[]).is_ok());
+    }
+
+    #[test]
+    fn a_category_histogram_labels_its_bins() {
+        let h = Binned1D::categories(&["ee", "μμ", "eμ"], vec![3.0, 4.0, 1.0]).unwrap();
+        let mut ax = Axes::new();
+        ax.hist(&h);
+        let ticks = ax.tick_layout(Rect::new(0.0, 0.0, 500.0, 300.0));
+        assert_eq!(ticks.xticks, [0.5, 1.5, 2.5]);
+        assert_eq!(ticks.xlabels, ["ee", "μμ", "eμ"]);
+        assert!(ax.x_minor_ticks(0.0, 3.0, &ticks.xticks).is_empty());
+        // A narrowed range keeps only the categories in view.
+        ax.xlim(1.0..3.0);
+        let ticks = ax.tick_layout(Rect::new(0.0, 0.0, 500.0, 300.0));
+        assert_eq!(ticks.xlabels, ["μμ", "eμ"]);
+
+        assert!(Binned1D::categories(&["a"], vec![1.0, 2.0]).is_err());
+        assert!(hist(&[0.0, 1.0], &[1.0]).with_labels(&["a", "b"]).is_err());
     }
 
     #[test]

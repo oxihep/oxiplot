@@ -39,7 +39,7 @@ ax.save("pt.png").unwrap(); // or .svg / .pdf
 ## What it draws
 
 - **Histograms** in the mplhep styles (step, fill, error bars, uncertainty
-  band), **graphs** and **profiles** with error bars, **2-D histograms** as
+  band), stacked (`hist_stack`) or over category bins, **graphs** and **profiles** with error bars, **2-D histograms** as
   a colour mesh with a colorbar (linear, log or symlog colour scale), and
   analytic **curves**.
 - **Linear or log axes** (`ax.yscale(Scale::Log)`), with decade ticks

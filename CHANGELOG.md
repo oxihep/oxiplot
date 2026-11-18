@@ -6,6 +6,23 @@ Notable changes to oxiplot and oxiplot-tex, by release. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Stacked histograms.** `Axes::hist_stack(&[&a, &b, …])` and
+  `hist_stack_with(…, StackOpts)` draw layers that share a binning on top of
+  each other (mplhep's `histplot(stack=True)`): filled by default, a label
+  and colour per layer, the legend reading top to bottom. Layers of another
+  binning are refused with the new `Error::BinningMismatch`.
+- **Category axes.** `Hist1dData::x_labels` names the bins of a categorical
+  histogram; plotting then labels each bin at its centre instead of drawing
+  numeric ticks (and no minor ticks). `Binned1D::categories(&labels,
+  values)` and `Binned1D::with_labels` build one from arrays.
+
+### Changed
+
+- The legend's `Loc::Best` placement keeps off the fit-statistics box, as it
+  does off the data; the box then stays in its corner.
+
 ## [0.3.1]
 
 ### Fixed
