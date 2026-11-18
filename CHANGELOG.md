@@ -16,6 +16,12 @@ Notable changes to oxiplot and oxiplot-tex, by release. The format follows
   default: the spot covering the fewest data points, upper right first, so a
   legend no longer hides a peak in the upper right.
 - `PdfPages::add_axes` adds a single axes as a page.
+- **Log axes.** `Axes::xscale(Scale::Log)` / `Axes::yscale(Scale::Log)`:
+  decades evenly spaced, major ticks at the powers of ten labelled `10^k`
+  (1·/2·/5· or integer multiples when the range spans under two decades),
+  minor ticks at 2…9 per decade, and autoscaling to the positive data. A
+  histogram on a log y axis starts below its smallest positive bin; values
+  ≤ 0 are clipped off the bottom, as matplotlib's `nonpositive="clip"`.
 
 ### Changed
 
@@ -26,6 +32,12 @@ Notable changes to oxiplot and oxiplot-tex, by release. The format follows
   over the panel below it and the suptitle over the titles. Touching panels
   (`hspace(0.0)`, a ratio plot) stay touching. A single `Axes::save` uses the
   same layout, so long tick labels no longer leave the figure.
+- **More axes than grid cells add rows.** `Figure::with_axes` drew the
+  extras over the last cell; they now get cells in new rows below.
+- **A shared x axis keeps the histogram edges.** The shared range was the
+  union of every panel's autoscaled range, so a ratio panel's padded points
+  pulled the main histogram off the frame. It is now the union of the
+  ranges the panels declare (`xlim`, a histogram's edges), when any does.
 - The y-axis labels of a column line up (as `fig.align_ylabels()` does in
   matplotlib), so a ratio plot's two labels share one x.
 

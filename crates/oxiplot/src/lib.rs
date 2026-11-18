@@ -129,6 +129,7 @@ pub use norm::Norm;
 pub use statbox::{Corner, StatBox};
 pub use style::{Sides, Style, TickDir};
 pub use timeaxis::{TimeFormat, format_time};
+pub use transform::Scale;
 
 #[cfg(test)]
 mod tests {

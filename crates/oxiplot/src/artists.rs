@@ -320,20 +320,21 @@ impl StepArtist {
         if n == 0 || self.edges.len() < n + 1 {
             return None;
         }
-        let xmin = self.edges[0];
-        let xmax = self.edges[n];
-        let mut ymin = 0.0_f64;
-        let mut ymax = 0.0_f64;
+        // The bars stand on y = 0; each bin adds its value, error bar ends,
+        // and (for a log axis) its edges and value as positive candidates.
+        let mut b = Bounds::new(self.edges[0], self.edges[n], 0.0, 0.0);
         for i in 0..n {
             let v = self.values[i];
             if !v.is_finite() {
                 continue;
             }
             let e = self.err(i);
-            ymin = ymin.min(v - e);
-            ymax = ymax.max(v + e);
+            let (lo, hi) = (self.edges[i], self.edges[i + 1]);
+            b = b
+                .union(Bounds::new(lo, hi, v - e, v + e))
+                .union(Bounds::new(lo, hi, v, v));
         }
-        Some(Bounds::new(xmin, xmax, ymin, ymax))
+        Some(b)
     }
 
     /// The error of bin `i`, or 0 when there are none or it is not finite.
@@ -501,7 +502,9 @@ impl ErrorbarArtist {
             }
             let (xl, xh) = Self::err_at(&self.xerr, i);
             let (yl, yh) = Self::err_at(&self.yerr, i);
-            let bb = Bounds::new(x - xl, x + xh, y - yl, y + yh);
+            // The point itself too: on a log axis its lower error bar may
+            // reach ≤ 0 while the point does not.
+            let bb = Bounds::new(x - xl, x + xh, y - yl, y + yh).union(Bounds::new(x, x, y, y));
             b = Some(match b {
                 None => bb,
                 Some(p) => p.union(bb),

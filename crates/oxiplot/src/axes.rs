@@ -17,7 +17,7 @@ use crate::style::{Style, TickDir};
 use crate::text::{self, FontStyle, HAlign, VAlign};
 use crate::ticker;
 use crate::timeaxis::TimeFormat;
-use crate::transform::{Bounds, Transform};
+use crate::transform::{Bounds, Scale, Transform};
 
 /// Gap between the frame and the bottom of the title, in points.
 const TITLE_PAD_PT: f32 = 6.0;
@@ -89,6 +89,9 @@ pub struct Axes {
     pub(crate) ytick_area: Option<f32>,
     /// Where the legend goes.
     legend_loc: Loc,
+    /// How each axis maps values onto its length.
+    xscale: Scale,
+    yscale: Scale,
     /// A ROOT-style fit statistics box (`TPaveStats`), set by [`Axes::fit_stats`].
     #[cfg(feature = "fit")]
     stats: Option<crate::statbox::StatData>,
@@ -124,6 +127,8 @@ impl Axes {
             ylabel_prune: (false, false),
             ytick_area: None,
             legend_loc: Loc::Best,
+            xscale: Scale::Linear,
+            yscale: Scale::Linear,
             #[cfg(feature = "fit")]
             stats: None,
         }
@@ -208,6 +213,30 @@ impl Axes {
         self.ylim = Some((range.start, range.end));
         self
     }
+    /// Set the x axis's scale, e.g. `ax.xscale(Scale::Log)` (matplotlib's
+    /// `set_xscale`).
+    pub fn xscale(&mut self, scale: Scale) -> &mut Self {
+        self.xscale = scale;
+        self
+    }
+
+    /// Set the y axis's scale: `ax.yscale(Scale::Log)` for a log axis, ticked
+    /// at the powers of ten. A histogram on a log axis starts below its
+    /// smallest positive bin rather than at 0 (which a log axis cannot show).
+    ///
+    /// # Examples
+    /// ```
+    /// use oxiplot::{Axes, Binned1D, Scale};
+    /// let h = Binned1D::new(vec![0.0, 1.0, 2.0, 3.0], vec![1e4, 300.0, 2.0])?;
+    /// let mut ax = Axes::new();
+    /// ax.hist(&h).yscale(Scale::Log);
+    /// # Ok::<(), oxiplot::Error>(())
+    /// ```
+    pub fn yscale(&mut self, scale: Scale) -> &mut Self {
+        self.yscale = scale;
+        self
+    }
+
     /// Enable the legend, placed where it covers the least data
     /// ([`Loc::Best`], matplotlib's default).
     pub fn legend(&mut self) -> &mut Self {
@@ -230,8 +259,7 @@ impl Axes {
     /// Every artist's sample points in pixels on a frame at `box_`: what
     /// [`Loc::Best`] keeps the legend off.
     pub(crate) fn data_points_px(&self, box_: Rect) -> Vec<(f32, f32)> {
-        let (xmin, xmax, ymin, ymax) = self.limits();
-        let t = Transform::new(box_, xmin, xmax, ymin, ymax);
+        let t = self.transform(box_, self.limits());
         self.artists
             .iter()
             .flat_map(|a| a.sample_points(&t))
@@ -288,6 +316,17 @@ impl Axes {
     pub fn fonts(&mut self, fonts: crate::fonts::FontSet) -> &mut Self {
         self.style.fonts = fonts;
         self
+    }
+
+    /// The x range the caller or the data asks for (`xlim`, or a histogram's
+    /// edges), if any: what a shared x axis keeps.
+    pub(crate) fn declared_xlim(&self) -> Option<(f64, f64)> {
+        self.xlim.or(self.data_xlim)
+    }
+
+    /// The y range the caller or the data asks for, if any.
+    pub(crate) fn declared_ylim(&self) -> Option<(f64, f64)> {
+        self.ylim.or(self.data_ylim)
     }
 
     /// The resolved x-axis limits (for sharing the x-axis across panels).
@@ -785,28 +824,77 @@ impl Axes {
             .reduce(Bounds::union);
         let m = self.style.margin as f64;
 
-        let (xmin, xmax) = self.xlim.or(self.data_xlim).unwrap_or_else(|| match auto {
-            Some(b) => padded(b.xmin, b.xmax, m),
-            None => (0.0, 1.0),
-        });
-        let (ymin, ymax) = self.ylim.or(self.data_ylim).unwrap_or_else(|| match auto {
-            // Histograms stand on y = 0 (a sticky edge, as in matplotlib):
-            // pad only the side(s) away from zero, so negative bins (a
-            // weighted or subtracted histogram) stay in view.
-            Some(b) if self.y_from_zero => {
-                let (lo, hi) = (b.ymin.min(0.0), b.ymax.max(0.0));
-                let pad = (hi - lo).max(1.0) * m;
-                (
-                    if lo < 0.0 { lo - pad } else { 0.0 },
-                    if hi > 0.0 || lo == 0.0 { hi + pad } else { 0.0 },
-                )
-            }
-            Some(b) => padded(b.ymin, b.ymax, m),
-            None => (0.0, 1.0),
-        });
-        let (xmin, xmax) = sane_range(xmin, xmax);
-        let (ymin, ymax) = sane_range(ymin, ymax);
+        let (xmin, xmax) = match self.xscale {
+            Scale::Log => log_range(
+                self.xlim.or(self.data_xlim),
+                auto.map(|b| (b.xpos, b.xmax)),
+                m,
+            ),
+            _ => sane_range_or(self.xlim.or(self.data_xlim).unwrap_or_else(|| match auto {
+                Some(b) => padded(b.xmin, b.xmax, m),
+                None => (0.0, 1.0),
+            })),
+        };
+        let (ymin, ymax) = match self.yscale {
+            // No sticky zero on a log axis: it cannot show 0.
+            Scale::Log => log_range(
+                self.ylim.or(self.data_ylim),
+                auto.map(|b| (b.ypos, b.ymax)),
+                m,
+            ),
+            _ => sane_range_or(self.ylim.or(self.data_ylim).unwrap_or_else(|| match auto {
+                // Histograms stand on y = 0 (a sticky edge, as in matplotlib):
+                // pad only the side(s) away from zero, so negative bins (a
+                // weighted or subtracted histogram) stay in view.
+                Some(b) if self.y_from_zero => {
+                    let (lo, hi) = (b.ymin.min(0.0), b.ymax.max(0.0));
+                    let pad = (hi - lo).max(1.0) * m;
+                    (
+                        if lo < 0.0 { lo - pad } else { 0.0 },
+                        if hi > 0.0 || lo == 0.0 { hi + pad } else { 0.0 },
+                    )
+                }
+                Some(b) => padded(b.ymin, b.ymax, m),
+                None => (0.0, 1.0),
+            })),
+        };
         (xmin, xmax, ymin, ymax)
+    }
+
+    /// The data → pixel map for a frame at `box_` with these limits.
+    fn transform(&self, box_: Rect, (xmin, xmax, ymin, ymax): (f64, f64, f64, f64)) -> Transform {
+        Transform::new(box_, xmin, xmax, ymin, ymax).with_scales(self.xscale, self.yscale)
+    }
+
+    /// Minor tick positions between `majors` on an axis of `scale`.
+    fn minor_ticks(lo: f64, hi: f64, majors: &[f64], scale: Scale) -> Vec<f64> {
+        match scale {
+            Scale::Log => ticker::log_minor_ticks(lo, hi),
+            _ => ticker::minor_ticks(lo, hi, majors, 5),
+        }
+    }
+
+    /// The width of a tick label as drawn (`$…$` labels are typeset).
+    fn tick_label_width(&self, label: &str) -> f32 {
+        let s = &self.style;
+        crate::mathtext::label_extents(&s.fonts, label, s.px(s.tick_label_size_pt)).0
+    }
+
+    /// The height of the x tick label row: the tallest label, and at least a
+    /// digit's height.
+    fn xtick_row_height(&self, labels: &[String]) -> f32 {
+        let s = &self.style;
+        let tlab = s.px(s.tick_label_size_pt);
+        labels
+            .iter()
+            .map(|l| {
+                let (_, a, d) = crate::mathtext::label_extents(&s.fonts, l, tlab);
+                a + d
+            })
+            .fold(
+                text::measure(&s.fonts, "0", tlab, FontStyle::Regular).height(),
+                f32::max,
+            )
     }
 
     /// Build the draw groups for this axes alone on a `fig_w × fig_h` figure,
@@ -825,16 +913,35 @@ impl Axes {
         let xtarget = ((box_.w / 70.0).round() as usize).clamp(3, 11);
         let ytarget = ((box_.h / 50.0).round() as usize).clamp(3, 9);
         // A time axis steps in minutes, hours or days, not in "nice" decimals.
-        let xticks = match &self.x_time {
-            Some(_) => crate::timeaxis::time_ticks(xmin, xmax, xtarget),
-            None => ticker::ticks(xmin, xmax, xtarget),
+        let (xticks, xlabels) = match (&self.x_time, self.xscale) {
+            (Some(time), _) => {
+                let ticks = crate::timeaxis::time_ticks(xmin, xmax, xtarget);
+                let labels = ticks.iter().map(|&v| time.label(v)).collect();
+                (ticks, labels)
+            }
+            (None, Scale::Log) => {
+                let ticks = ticker::log_ticks(xmin, xmax, xtarget);
+                let labels = ticker::format_log_ticks(&ticks);
+                (ticks, labels)
+            }
+            (None, _) => {
+                let ticks = ticker::ticks(xmin, xmax, xtarget);
+                let labels = ticker::format_ticks(&ticks, ticker::nice_step(xmin, xmax, xtarget));
+                (ticks, labels)
+            }
         };
-        let yticks = ticker::ticks(ymin, ymax, ytarget);
-        let xlabels = match &self.x_time {
-            Some(time) => xticks.iter().map(|&v| time.label(v)).collect(),
-            None => ticker::format_ticks(&xticks, ticker::nice_step(xmin, xmax, xtarget)),
+        let (yticks, ylabels) = match self.yscale {
+            Scale::Log => {
+                let ticks = ticker::log_ticks(ymin, ymax, ytarget);
+                let labels = ticker::format_log_ticks(&ticks);
+                (ticks, labels)
+            }
+            _ => {
+                let ticks = ticker::ticks(ymin, ymax, ytarget);
+                let labels = ticker::format_ticks(&ticks, ticker::nice_step(ymin, ymax, ytarget));
+                (ticks, labels)
+            }
         };
-        let ylabels = ticker::format_ticks(&yticks, ticker::nice_step(ymin, ymax, ytarget));
         TickLayout {
             limits: (xmin, xmax, ymin, ymax),
             xticks,
@@ -895,11 +1002,10 @@ impl Axes {
         if !self.show_yticklabels {
             return 0.0;
         }
-        let tlab = s.px(s.tick_label_size_pt);
         let widest = ticks
             .ylabels
             .iter()
-            .map(|l| text::measure(&s.fonts, l, tlab, FontStyle::Regular).width)
+            .map(|l| self.tick_label_width(l))
             .fold(0.0_f32, f32::max);
         self.tick_lengths().0 + s.px(s.tick_pad_pt) + widest
     }
@@ -912,7 +1018,6 @@ impl Axes {
         let (frame, _) = self.split_colorbar(box_);
         let ticks = self.tick_layout(frame);
         let (out_len, _) = self.tick_lengths();
-        let tlab = s.px(s.tick_label_size_pt);
         let labsize = s.px(s.label_size_pt);
         let label_height = |l: &str| {
             let (_, a, d) = crate::mathtext::label_extents(&s.fonts, l, labsize);
@@ -928,7 +1033,7 @@ impl Axes {
         let mut bottom = 0.0;
         let mut right = 0.0_f32;
         if self.show_xticklabels && !ticks.xticks.is_empty() {
-            let tick_h = text::measure(&s.fonts, "0", tlab, FontStyle::Regular).height();
+            let tick_h = self.xtick_row_height(&ticks.xlabels);
             bottom = out_len + s.px(s.tick_pad_pt) + tick_h;
             if let Some(xl) = &self.xlabel {
                 bottom += s.px(AXIS_LABEL_PAD_PT) + label_height(xl);
@@ -936,9 +1041,9 @@ impl Axes {
             // The outer x tick labels are centred on their ticks, so the ones
             // at the ends of the axis hang over the frame by half their width.
             let (xmin, xmax, ymin, ymax) = ticks.limits;
-            let t = Transform::new(frame, xmin, xmax, ymin, ymax);
+            let t = self.transform(frame, (xmin, xmax, ymin, ymax));
             for (&v, l) in ticks.xticks.iter().zip(&ticks.xlabels) {
-                let half = text::measure(&s.fonts, l, tlab, FontStyle::Regular).width / 2.0;
+                let half = self.tick_label_width(l) / 2.0;
                 left = left.max(frame.x - (t.x(v) - half));
                 right = right.max(t.x(v) + half - box_.right());
             }
@@ -986,7 +1091,7 @@ impl Axes {
             xlabels,
             ylabels,
         } = self.tick_layout(box_);
-        let t = Transform::new(box_, xmin, xmax, ymin, ymax);
+        let t = self.transform(box_, (xmin, xmax, ymin, ymax));
 
         let mut grid = DrawGroup::new(Some(box_));
         let mut data = DrawGroup::new(Some(box_));
@@ -1022,7 +1127,7 @@ impl Axes {
             if self.grid_minor {
                 let gminor =
                     Stroke::line(s.grid_color.with_alpha(0.5), s.px(s.grid_width_pt * 0.7));
-                for &xv in &ticker::minor_ticks(xmin, xmax, &xticks, 5) {
+                for &xv in &Self::minor_ticks(xmin, xmax, &xticks, self.xscale) {
                     let px = t.x(xv);
                     grid.push(DrawCommand::Line {
                         p0: (px, box_.y),
@@ -1030,7 +1135,7 @@ impl Axes {
                         stroke: gminor.clone(),
                     });
                 }
-                for &yv in &ticker::minor_ticks(ymin, ymax, &yticks, 5) {
+                for &yv in &Self::minor_ticks(ymin, ymax, &yticks, self.yscale) {
                     let py = t.y(yv);
                     grid.push(DrawCommand::Line {
                         p0: (box_.x, py),
@@ -1106,8 +1211,8 @@ impl Axes {
         // minor width against a 0.8 pt major).
         if s.minor_ticks {
             let minorstroke = Stroke::line(fg, s.px(s.tick_major_width_pt * 0.75));
-            let xmin_t = ticker::minor_ticks(xmin, xmax, &xticks, 5);
-            let ymin_t = ticker::minor_ticks(ymin, ymax, &yticks, 5);
+            let xmin_t = Self::minor_ticks(xmin, xmax, &xticks, self.xscale);
+            let ymin_t = Self::minor_ticks(ymin, ymax, &yticks, self.yscale);
             for &xv in &xmin_t {
                 let px = t.x(xv);
                 if s.tick_sides.bottom {
@@ -1149,18 +1254,19 @@ impl Axes {
         if self.show_xticklabels {
             for (&xv, lab) in xticks.iter().zip(&xlabels) {
                 let px = t.x(xv);
-                axis.extend(text::layout(
+                // Through the label layout: log-axis labels are `$10^{k}$`.
+                crate::mathtext::layout_label(
+                    &mut axis,
                     &s.fonts,
                     lab,
                     px,
                     label_y,
                     tlab,
-                    FontStyle::Regular,
                     fg,
                     HAlign::Center,
                     VAlign::Top,
                     0.0,
-                ));
+                );
             }
         }
         // Y tick labels (left of the left spine); track max width for the ylabel.
@@ -1170,31 +1276,30 @@ impl Axes {
         if self.show_yticklabels {
             for (i, (&yv, lab)) in yticks.iter().zip(&ylabels).enumerate() {
                 let py = t.y(yv);
-                max_ylabel_w =
-                    max_ylabel_w.max(text::measure(&s.fonts, lab, tlab, FontStyle::Regular).width);
+                max_ylabel_w = max_ylabel_w.max(self.tick_label_width(lab));
                 // yticks are ascending: index 0 is the bottom-most, last is the top.
                 if (self.ylabel_prune.0 && i == 0) || (self.ylabel_prune.1 && i + 1 == nyt) {
                     continue;
                 }
-                axis.extend(text::layout(
+                crate::mathtext::layout_label(
+                    &mut axis,
                     &s.fonts,
                     lab,
                     label_x,
                     py,
                     tlab,
-                    FontStyle::Regular,
                     fg,
                     HAlign::Right,
                     VAlign::Middle,
                     0.0,
-                ));
+                );
             }
         }
 
         // Axis labels.
         let labsize = s.px(s.label_size_pt);
         if let (Some(xl), true) = (&self.xlabel, self.show_xticklabels) {
-            let tick_h = text::measure(&s.fonts, "0", tlab, FontStyle::Regular).height();
+            let tick_h = self.xtick_row_height(&xlabels);
             let y = label_y + tick_h + s.px(AXIS_LABEL_PAD_PT);
             crate::mathtext::layout_label(
                 &mut axis,
@@ -1342,6 +1447,40 @@ fn padded(lo: f64, hi: f64, margin: f64) -> (f64, f64) {
     let pad = (hi - lo) * margin;
     let pad = if pad.abs() < f64::EPSILON { 0.5 } else { pad };
     (lo - pad, hi + pad)
+}
+
+/// [`sane_range`] of a `(lo, hi)` pair.
+fn sane_range_or((lo, hi): (f64, f64)) -> (f64, f64) {
+    sane_range(lo, hi)
+}
+
+/// The range of a log axis: the requested one when both ends are > 0,
+/// otherwise the data's positive span (`(smallest > 0, largest)`) padded by
+/// `margin` of its decades on each side; `[1, 10]` with nothing to show.
+/// A requested end ≤ 0 (a histogram's edge at 0, say) is replaced by the
+/// data's. The order of a requested range is kept.
+fn log_range(requested: Option<(f64, f64)>, data: Option<(f64, f64)>, margin: f64) -> (f64, f64) {
+    let ok = |v: f64| v > 0.0 && v.is_finite();
+    let auto = match data {
+        Some((pos, max)) if ok(pos) && ok(max) => {
+            let (a, b) = (pos.log10(), max.log10());
+            let pad = if b - a < 1e-9 { 0.5 } else { (b - a) * margin };
+            (10f64.powf(a - pad), 10f64.powf(b + pad))
+        }
+        _ => (1.0, 10.0),
+    };
+    let (lo, hi) = match requested {
+        Some((lo, hi)) => (
+            if ok(lo) { lo } else { auto.0 },
+            if ok(hi) { hi } else { auto.1 },
+        ),
+        None => auto,
+    };
+    if lo == hi {
+        (lo / 10f64.sqrt(), hi * 10f64.sqrt())
+    } else {
+        (lo, hi)
+    }
 }
 
 /// A drawable axis range from `(lo, hi)`: a non-finite end, or a span that
@@ -1726,6 +1865,48 @@ mod tests {
             panic!("not points")
         };
         assert_eq!(p.color, Color::BLACK);
+    }
+
+    #[test]
+    fn a_log_axis_autoscales_to_the_positive_data() {
+        // A histogram on a log y axis cannot stand on 0: it starts below its
+        // smallest positive bin, and empty bins do not drag it down.
+        let mut ax = Axes::new();
+        ax.hist(&hist(&[0.0, 1.0, 2.0, 3.0], &[1e4, 0.0, 3.0]))
+            .yscale(Scale::Log);
+        let (lo, hi) = ax.resolved_ylim();
+        assert!(lo > 0.3 && lo < 3.0 && hi > 1e4 && hi < 1e5, "({lo}, {hi})");
+
+        // A log x axis keeps a histogram's edges, except one at 0.
+        let mut ax = Axes::new();
+        ax.hist(&hist(&[0.0, 10.0, 100.0], &[1.0, 2.0]))
+            .xscale(Scale::Log);
+        let (lo, hi) = ax.resolved_xlim();
+        assert!(lo > 0.0 && lo <= 10.0 && hi == 100.0, "({lo}, {hi})");
+
+        // Requested limits win; a non-positive end is replaced.
+        ax.xlim(5.0..500.0);
+        assert_eq!(ax.resolved_xlim(), (5.0, 500.0));
+        ax.xlim(-1.0..500.0);
+        assert!(ax.resolved_xlim().0 > 0.0);
+
+        // Nothing positive at all: one decade.
+        let mut ax = Axes::new();
+        ax.plot(&[-1.0, 0.0], &[-2.0, 0.0]).unwrap();
+        ax.yscale(Scale::Log);
+        assert_eq!(ax.resolved_ylim(), (1.0, 10.0));
+    }
+
+    #[test]
+    fn a_log_axis_places_decades_evenly() {
+        let mut ax = Axes::new();
+        ax.ylim(1.0..1000.0).yscale(Scale::Log);
+        let t = ax.transform(Rect::new(0.0, 0.0, 100.0, 300.0), ax.limits());
+        assert_eq!(t.y(1.0), 300.0);
+        assert_eq!(t.y(10.0), 200.0);
+        assert_eq!(t.y(1000.0), 0.0);
+        // Values a log axis cannot show land far below the frame (clipped).
+        assert!(t.y(0.0) > 1000.0 && t.y(-5.0) > 1000.0);
     }
 
     #[test]

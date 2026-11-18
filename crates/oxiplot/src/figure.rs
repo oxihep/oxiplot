@@ -117,17 +117,25 @@ impl Figure {
     /// `[ax]`, a `Vec<Axes>`, etc. With a shared x- or y-axis the panels are
     /// given a common range and the inner tick labels are hidden (only the bottom
     /// row keeps x labels, only the left column keeps y labels).
+    ///
+    /// The shared range is the one the panels ask for — limits set with
+    /// `xlim`/`ylim`, or a histogram's edges — when any panel asks for one, so a
+    /// ratio panel's padded points do not pull the histogram off the frame;
+    /// otherwise it covers every panel's autoscaled range.
+    ///
+    /// More axes than the grid has cells add rows (of height ratio 1) below
+    /// it, so every axes gets a cell of its own.
     #[must_use]
     pub fn with_axes(mut self, axes: impl IntoIterator<Item = Axes>) -> Self {
         let mut axes: Vec<Axes> = axes.into_iter().collect();
         let ncols = self.grid.ncols.max(1);
+        let needed_rows = axes.len().div_ceil(ncols);
+        if needed_rows > self.grid.nrows {
+            self.grid.nrows = needed_rows;
+            self.grid.height_ratios.resize(needed_rows, 1.0);
+        }
         if self.sharex && !axes.is_empty() {
-            let (mut lo, mut hi) = axes[0].resolved_xlim();
-            for ax in &axes[1..] {
-                let (l, h) = ax.resolved_xlim();
-                lo = lo.min(l);
-                hi = hi.max(h);
-            }
+            let (lo, hi) = shared_range(&axes, Axes::declared_xlim, Axes::resolved_xlim);
             let last_row = axes.len().saturating_sub(1) / ncols;
             // Touching rows share a seam: drop the top y label of every row
             // below the first, or it would print over the bottom label of
@@ -144,12 +152,7 @@ impl Figure {
             }
         }
         if self.sharey && !axes.is_empty() {
-            let (mut lo, mut hi) = axes[0].resolved_ylim();
-            for ax in &axes[1..] {
-                let (l, h) = ax.resolved_ylim();
-                lo = lo.min(l);
-                hi = hi.max(h);
-            }
+            let (lo, hi) = shared_range(&axes, Axes::declared_ylim, Axes::resolved_ylim);
             for (i, ax) in axes.iter_mut().enumerate() {
                 ax.ylim(lo..hi);
                 if i % ncols != 0 {
@@ -389,6 +392,25 @@ impl Figure {
             boxes,
         }
     }
+}
+
+/// The range shared by `axes`: the union of the ranges they declare, or of
+/// their resolved ranges when none declares one.
+fn shared_range(
+    axes: &[Axes],
+    declared: impl Fn(&Axes) -> Option<(f64, f64)>,
+    resolved: impl Fn(&Axes) -> (f64, f64),
+) -> (f64, f64) {
+    let union = |a: (f64, f64), b: (f64, f64)| (a.0.min(b.0), a.1.max(b.1));
+    axes.iter()
+        .filter_map(&declared)
+        .reduce(union)
+        .unwrap_or_else(|| {
+            axes.iter()
+                .map(resolved)
+                .reduce(union)
+                .unwrap_or((0.0, 1.0))
+        })
 }
 
 /// Room left at the figure's edges beyond the outermost decorations, in points.
@@ -694,6 +716,40 @@ mod tests {
         assert!(!fig.axes[0].ylabel_prune_for_test().1);
         assert!(fig.axes[1].ylabel_prune_for_test().1);
         assert!(fig.axes[2].ylabel_prune_for_test().1);
+    }
+
+    #[test]
+    fn more_axes_than_cells_add_rows() {
+        let (fig, mut axs) = subplots_grid(1, 2);
+        axs.push(Axes::new());
+        let fig = fig.with_axes(axs);
+        assert_eq!((fig.grid.nrows, fig.grid.ncols), (2, 2));
+        let (l, _) = laid_out(&fig);
+        // The third panel has a cell of its own, below the first.
+        assert_eq!(l.boxes[2].x, l.boxes[0].x);
+        assert!(l.boxes[2].y >= l.boxes[0].bottom());
+        assert!(l.boxes[1].bottom() <= l.boxes[2].y);
+    }
+
+    #[test]
+    fn a_shared_x_axis_keeps_the_histogram_edges() {
+        // The ratio panel's points autoscale with padding; the shared range
+        // is still the histogram's edges, so the bars meet the frame.
+        let (fig, mut main, mut ratio) = ratio_subplots();
+        let e: Vec<f64> = (0..=10).map(|i| 50.0 * f64::from(i)).collect();
+        main.hist(&Binned1D::new(e, vec![5.0; 10]).unwrap());
+        ratio.errorbar(&crate::Points::new(vec![25.0, 475.0], vec![1.0, 1.0]).unwrap());
+        let fig = fig.ratio(main, ratio);
+        assert_eq!(fig.axes[0].resolved_xlim(), (0.0, 500.0));
+        assert_eq!(fig.axes[1].resolved_xlim(), (0.0, 500.0));
+
+        // With nothing declared, the panels' autoscaled ranges are united.
+        let (fig, mut a, mut b) = ratio_subplots();
+        a.plot(&[0.0, 1.0], &[0.0, 1.0]).unwrap();
+        b.plot(&[2.0, 3.0], &[0.0, 1.0]).unwrap();
+        let fig = fig.ratio(a, b);
+        let (lo, hi) = fig.axes[0].resolved_xlim();
+        assert!(lo < 0.0 && hi > 3.0, "({lo}, {hi})");
     }
 
     #[test]
