@@ -6,6 +6,13 @@ Notable changes to oxiplot and oxiplot-tex, by release. The format follows
 
 ## [Unreleased]
 
+## [0.3.0]
+
+Several defaults change how an existing plot looks (hence 0.3): the legend
+moves off the data, figures widen their margins and gaps when labels need
+room, PDF pages shrink to the figure's real size, and a histogram's y range
+extends below 0 for negative bins. No public item was removed or renamed.
+
 ### Added
 
 - `Axes::plot_with` (color, legend label, width, dash for a line through
@@ -25,6 +32,10 @@ Notable changes to oxiplot and oxiplot-tex, by release. The format follows
 
 ### Changed
 
+- **Rust 1.100 and edition 2024.** The minimum supported Rust version
+  (`rust-version`) moves from 1.95 to 1.100, the current stable release that
+  CI already builds with, and the crates move to the 2024 edition (migrated
+  with `cargo fix --edition`; formatting follows the 2024 style).
 - **Figures lay out their panels around their labels.** The grid's margins
   and gaps are now the least room left: they widen wherever a panel's tick
   labels, axis labels or title, or the suptitle, need more (matplotlib's
@@ -85,12 +96,6 @@ Notable changes to oxiplot and oxiplot-tex, by release. The format follows
 - A fit-statistics box stacked under the legend only when they overlap, not
   whenever the legend exists.
 
-### Changed
-
-- **Rust 1.100 and edition 2024.** The minimum supported Rust version
-  (`rust-version`) moves from 1.95 to 1.100, the current stable release that
-  CI already builds with, and the crates move to the 2024 edition (migrated
-  with `cargo fix --edition`; formatting follows the 2024 style).
 
 ## [0.2.1]
 

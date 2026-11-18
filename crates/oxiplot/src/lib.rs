@@ -23,6 +23,7 @@
 //!   error bars.
 //! - **Graphs & profiles** — [`Axes::errorbar`] (points with symmetric or
 //!   asymmetric errors) and [`Axes::profile`]; [`Axes::plot`] for raw `(x, y)`.
+//!   Each has a `*_with` form taking a color and a legend label.
 //! - **2-D histograms** — [`Axes::hist2d`]/[`Axes::hist2d_with`] render a 2-D grid as
 //!   a color mesh with a colorbar and the real matplotlib `viridis`/`plasma`
 //!   [`Colormap`]s. [`Hist2dOpts::log`] (or [`Hist2dOpts::norm`] with a [`Norm`])
@@ -30,15 +31,24 @@
 //!   matplotlib's `LogNorm`/`SymLogNorm`.
 //! - **Curves** — [`Axes::function`] overlays any analytic closure; with the
 //!   `fit` feature, `Axes::model` overlays a fitted `oxifit::Model`.
-//! - **Decoration** — `xlabel`/`ylabel`/`title` (with LaTeX), `xlim`/`ylim`,
-//!   [`Axes::legend`], and [`Axes::grid`].
+//! - **Axes** — `xlim`/`ylim`, linear or log scales ([`Axes::xscale`],
+//!   [`Axes::yscale`] with [`Scale::Log`]: decade ticks labelled `10^k`), and a
+//!   time axis ([`Axes::x_time_format`]).
+//! - **Decoration** — `xlabel`/`ylabel`/`title` (with LaTeX), the mplhep
+//!   experiment label ([`Axes::hep_label`]), [`Axes::grid`], and a legend:
+//!   [`Axes::legend`] places it where it covers the least data (matplotlib's
+//!   `loc="best"`), [`Axes::legend_loc`] at a chosen [`Loc`].
 //! - **Layouts** — [`subplots_grid`] and a custom [`GridSpec`] for multi-panel
-//!   figures, and [`ratio_subplots`] for the HEP main-over-ratio plot.
+//!   figures, and [`ratio_subplots`] for the HEP main-over-ratio plot. A
+//!   figure leaves room for every panel's tick labels, axis labels and title
+//!   (and the suptitle) so nothing overlaps, and lines up the y-axis labels of
+//!   a column; panels set to touch stay touching.
 //! - **Output** — [`Axes::save`]/[`Figure::save`] choose the format from the
 //!   file extension (`.png`, `.svg`, `.pdf`); [`SaveOpts`] sets the DPI for a
 //!   sharper PNG or a transparent background, and `to_png_bytes`/`to_svg_string`
-//!   render in memory. [`PdfPages`] collects several figures into one multi-page
-//!   vector PDF (matplotlib's `PdfPages`).
+//!   render in memory. A PDF page is the figure's size in points at any DPI.
+//!   [`PdfPages`] collects several figures (or single axes) into one
+//!   multi-page vector PDF (matplotlib's `PdfPages`).
 //!
 //! The default look reproduces a plain matplotlib figure; [`Style::mplhep`]
 //! switches to the in-pointing, all-sides, minor-tick HEP style.
