@@ -6,6 +6,13 @@ Notable changes to oxiplot and oxiplot-tex, by release. The format follows
 
 ## [Unreleased]
 
+## [0.4.0]
+
+Output changes again (hence 0.4): SVGs are sized in points, large heatmaps
+become one image, and narrow axes gain ticks. The additions (stacks,
+category axes) are compatible; no public item was removed or renamed. The
+`fit` feature uses oxifit 0.1.2.
+
 ### Added
 
 - **Stacked histograms.** `Axes::hist_stack(&[&a, &b, …])` and
