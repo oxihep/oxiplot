@@ -154,7 +154,53 @@ fn draw_cmd(pixmap: &mut Pixmap, cmd: &DrawCommand, clip: Option<&Mask>) {
                 }
             }
         }
+        DrawCommand::Image {
+            rect,
+            width,
+            height,
+            rgba,
+        } => {
+            let Some(src) = pixmap_from_rgba(*width, *height, rgba) else {
+                return;
+            };
+            let paint = tiny_skia::PixmapPaint {
+                quality: tiny_skia::FilterQuality::Nearest,
+                ..tiny_skia::PixmapPaint::default()
+            };
+            let t = Transform::from_row(
+                rect.w / *width as f32,
+                0.0,
+                0.0,
+                rect.h / *height as f32,
+                rect.x,
+                rect.y,
+            );
+            pixmap.draw_pixmap(0, 0, src.as_ref(), &paint, t, clip);
+        }
     }
+}
+
+/// A pixmap of `width × height` straight RGBA pixels (tiny-skia stores them
+/// premultiplied).
+fn pixmap_from_rgba(width: u32, height: u32, rgba: &[u8]) -> Option<Pixmap> {
+    let mut pm = Pixmap::new(width, height)?;
+    if rgba.len() != pm.data().len() {
+        return None;
+    }
+    for (dst, src) in pm
+        .pixels_mut()
+        .iter_mut()
+        .zip(rgba.as_chunks::<4>().0.iter())
+    {
+        *dst = tiny_skia::ColorU8::from_rgba(src[0], src[1], src[2], src[3]).premultiply();
+    }
+    Some(pm)
+}
+
+/// `width × height` straight RGBA pixels encoded as a PNG (for an image
+/// embedded in an SVG).
+pub(crate) fn encode_rgba_png(width: u32, height: u32, rgba: &[u8]) -> Option<Vec<u8>> {
+    pixmap_from_rgba(width, height, rgba)?.encode_png().ok()
 }
 
 fn clip_mask(width: u32, height: u32, rect: Rect) -> Option<Mask> {

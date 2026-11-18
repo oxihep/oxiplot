@@ -161,7 +161,7 @@ mod tests {
             png,
             Err(Error::MissingFeature { feature: "png", .. })
         ));
-        let svg = render::svg::render(groups, w, h, Color::WHITE);
+        let svg = render::svg::render(groups, w, h, Color::WHITE, 100.0);
         assert!(svg.starts_with("<svg") && svg.contains("</svg>"));
     }
 
@@ -206,7 +206,7 @@ mod tests {
         ));
         let groups = [g];
         assert_renders(&groups, w, h);
-        let svg = render::svg::render(&groups, w, h, Color::WHITE);
+        let svg = render::svg::render(&groups, w, h, Color::WHITE, 100.0);
         assert!(svg.starts_with("<svg") && svg.contains("</svg>") && svg.contains("<path"));
     }
 

@@ -29,6 +29,10 @@ skrifa = { workspace = true }
 # own DrawCommand IR. Only `$…$` math uses it (the `math` feature).
 oxiplot-tex = { workspace = true, optional = true }
 
+[dev-dependencies]
+# Decodes the reference images of the golden-image tests (tests/it/golden.rs).
+tiny-skia = "0.12"
+
 [features]
 # SVG and PDF output need no feature; PNG output and TeX math are on by default.
 # An SVG/PDF-only build (`default-features = false`) drops the rasterizer and

@@ -199,7 +199,7 @@ impl Figure {
     #[must_use]
     pub fn to_svg_string(&self) -> String {
         let (groups, w, h) = self.render_groups(None);
-        svg::render(&groups, w, h, self.background(false))
+        svg::render(&groups, w, h, self.background(false), self.style.dpi)
     }
 
     /// Render to in-memory PDF bytes.
@@ -626,7 +626,7 @@ pub(crate) fn write_groups(
         .to_ascii_lowercase();
     match ext.as_str() {
         "png" => std::fs::write(path, raster::render_png(groups, w, h, bg)?)?,
-        "svg" => std::fs::write(path, svg::render(groups, w, h, bg))?,
+        "svg" => std::fs::write(path, svg::render(groups, w, h, bg, dpi))?,
         "pdf" => std::fs::write(path, pdf::render(groups, w, h, bg, dpi))?,
         other => return Err(Error::UnknownFormat(other.to_string())),
     }

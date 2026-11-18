@@ -180,16 +180,99 @@ fn emit_cmd(out: &mut String, cmd: &DrawCommand) {
                 stroke_attr(stroke.as_ref())
             );
         }
+        DrawCommand::Image {
+            rect,
+            width,
+            height,
+            rgba,
+        } => emit_image(out, *rect, *width, *height, rgba),
     }
 }
 
-/// Render the IR to a complete SVG document string.
+/// An image as an embedded PNG, scaled without smoothing so each pixel stays
+/// a crisp cell.
+#[cfg(feature = "png")]
+fn emit_image(out: &mut String, rect: Rect, width: u32, height: u32, rgba: &[u8]) {
+    let Some(png) = crate::render::raster::encode_rgba_png(width, height, rgba) else {
+        return;
+    };
+    let _ = write!(
+        out,
+        "<image x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" preserveAspectRatio=\"none\" \
+         style=\"image-rendering:pixelated\" xlink:href=\"data:image/png;base64,{}\"/>",
+        num(rect.x),
+        num(rect.y),
+        num(rect.w),
+        num(rect.h),
+        base64(&png)
+    );
+}
+
+/// Without a PNG encoder, an image is drawn as one rectangle per visible
+/// pixel (what a heatmap was before it became an image).
+#[cfg(not(feature = "png"))]
+fn emit_image(out: &mut String, rect: Rect, width: u32, height: u32, rgba: &[u8]) {
+    let (cw, ch) = (rect.w / width as f32, rect.h / height as f32);
+    for (i, px) in rgba.as_chunks::<4>().0.iter().enumerate() {
+        if px[3] == 0 {
+            continue;
+        }
+        let (col, row) = (i as u32 % width, i as u32 / width);
+        let cell = Rect::new(rect.x + col as f32 * cw, rect.y + row as f32 * ch, cw, ch);
+        let fill = Color::rgba(px[0], px[1], px[2], px[3]);
+        emit_cmd(
+            out,
+            &DrawCommand::Rect {
+                rect: cell,
+                fill: Some(fill),
+                stroke: None,
+            },
+        );
+    }
+}
+
+/// Standard base64 (RFC 4648, padded).
+#[cfg(feature = "png")]
+fn base64(bytes: &[u8]) -> String {
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    for chunk in bytes.chunks(3) {
+        let b = [
+            chunk[0],
+            *chunk.get(1).unwrap_or(&0),
+            *chunk.get(2).unwrap_or(&0),
+        ];
+        let n = (u32::from(b[0]) << 16) | (u32::from(b[1]) << 8) | u32::from(b[2]);
+        for k in 0..4 {
+            if k <= chunk.len() {
+                out.push(ALPHABET[(n >> (18 - 6 * k)) as usize & 63] as char);
+            } else {
+                out.push('=');
+            }
+        }
+    }
+    out
+}
+
+/// Render the IR (pixels at `dpi`) to a complete SVG document string.
+///
+/// The document's size is given in points, the figure's physical size (a
+/// 6.4 × 4.8 in figure is `460.8pt × 345.6pt`, as matplotlib writes it), so it
+/// opens at the same size as the PDF; the drawing keeps pixel coordinates
+/// through the `viewBox`.
 #[must_use]
-pub fn render(groups: &[DrawGroup], width: u32, height: u32, bg: Color) -> String {
+pub fn render(groups: &[DrawGroup], width: u32, height: u32, bg: Color, dpi: f32) -> String {
+    let scale = if dpi.is_finite() && dpi > 0.0 {
+        72.0 / dpi
+    } else {
+        1.0
+    };
+    let (w_pt, h_pt) = (num(width as f32 * scale), num(height as f32 * scale));
     let mut out = String::new();
     let _ = write!(
         out,
-        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{width}\" height=\"{height}\" \
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" \
+         xmlns:xlink=\"http://www.w3.org/1999/xlink\" width=\"{w_pt}pt\" height=\"{h_pt}pt\" \
          viewBox=\"0 0 {width} {height}\">"
     );
 

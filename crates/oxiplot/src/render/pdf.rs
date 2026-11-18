@@ -18,7 +18,17 @@ struct Builder {
     content: String,
     /// Distinct `(ca, CA)` alpha pairs (as 0–255) needing an `ExtGState`.
     gstates: Vec<(u8, u8)>,
+    /// Images drawn on the page, each an image XObject (`/Im1`, `/Im2`, …).
+    images: Vec<PdfImage>,
     h: f32,
+}
+
+/// An image XObject: its RGB samples and its alpha as a soft mask.
+struct PdfImage {
+    width: u32,
+    height: u32,
+    rgb: Vec<u8>,
+    alpha: Vec<u8>,
 }
 
 fn num(v: f32) -> String {
@@ -45,6 +55,7 @@ impl Builder {
         Builder {
             content: String::new(),
             gstates: Vec::new(),
+            images: Vec::new(),
             h,
         }
     }
@@ -249,6 +260,39 @@ impl Builder {
                 let path = path.clone();
                 self.shape(*fill, stroke.as_ref(), |b| b.emit_ir_path(&path));
             }
+            DrawCommand::Image {
+                rect,
+                width,
+                height,
+                rgba,
+            } => {
+                if rgba.len() != (*width as usize) * (*height as usize) * 4 {
+                    return;
+                }
+                let mut rgb = Vec::with_capacity(rgba.len() / 4 * 3);
+                let mut alpha = Vec::with_capacity(rgba.len() / 4);
+                for px in rgba.as_chunks::<4>().0.iter() {
+                    rgb.extend_from_slice(&px[..3]);
+                    alpha.push(px[3]);
+                }
+                self.images.push(PdfImage {
+                    width: *width,
+                    height: *height,
+                    rgb,
+                    alpha,
+                });
+                // An image fills the unit square: scale it onto the rectangle.
+                // PDF images are not smoothed unless /Interpolate asks.
+                let _ = writeln!(
+                    self.content,
+                    "q\n{} 0 0 {} {} {} cm\n/Im{} Do\nQ",
+                    num(rect.w),
+                    num(rect.h),
+                    num(rect.x),
+                    num(self.fy(rect.y + rect.h)),
+                    self.images.len()
+                );
+            }
         }
     }
 }
@@ -258,6 +302,7 @@ impl Builder {
 pub(crate) struct PdfPage {
     content: String,
     gstates: Vec<(u8, u8)>,
+    images: Vec<PdfImage>,
     /// The media size in points.
     width: f32,
     height: f32,
@@ -311,6 +356,7 @@ pub(crate) fn page(groups: &[DrawGroup], width: u32, height: u32, bg: Color, dpi
     PdfPage {
         content: b.content,
         gstates: b.gstates,
+        images: b.images,
         width: width as f32 * scale,
         height: height as f32 * scale,
     }
@@ -328,6 +374,8 @@ struct PageObjs {
     page: usize,
     contents: usize,
     extg: Vec<usize>,
+    /// Per image: its XObject and its soft mask.
+    images: Vec<(usize, usize)>,
 }
 
 /// Assemble one or more rendered pages into a single PDF document (PDF 1.4):
@@ -350,10 +398,17 @@ pub(crate) fn render_pages(pages: &[PdfPage]) -> Vec<u8> {
                 n
             })
             .collect();
+        let images: Vec<(usize, usize)> = (0..p.images.len())
+            .map(|_| {
+                next += 2;
+                (next - 2, next - 1)
+            })
+            .collect();
         objs.push(PageObjs {
             page,
             contents,
             extg,
+            images,
         });
     }
 
@@ -389,15 +444,27 @@ pub(crate) fn render_pages(pages: &[PdfPage]) -> Vec<u8> {
     );
 
     for (p, o) in pages.iter().zip(&objs) {
-        // A page's translucent alpha states are its own /ExtGState resources.
-        let resources = if o.extg.is_empty() {
+        // A page's translucent alpha states and images are its own
+        // /ExtGState and /XObject resources.
+        let resources = if o.extg.is_empty() && o.images.is_empty() {
             String::new()
         } else {
-            let mut s = String::from(" /Resources << /ExtGState <<");
-            for (i, &e) in o.extg.iter().enumerate() {
-                let _ = write!(s, " /GS{} {} 0 R", i + 1, e);
+            let mut s = String::from(" /Resources <<");
+            if !o.extg.is_empty() {
+                s.push_str(" /ExtGState <<");
+                for (i, &e) in o.extg.iter().enumerate() {
+                    let _ = write!(s, " /GS{} {} 0 R", i + 1, e);
+                }
+                s.push_str(" >>");
             }
-            s.push_str(" >> >>");
+            if !o.images.is_empty() {
+                s.push_str(" /XObject <<");
+                for (i, &(im, _)) in o.images.iter().enumerate() {
+                    let _ = write!(s, " /Im{} {} 0 R", i + 1, im);
+                }
+                s.push_str(" >>");
+            }
+            s.push_str(" >>");
             s
         };
         put(
@@ -431,6 +498,37 @@ pub(crate) fn render_pages(pages: &[PdfPage]) -> Vec<u8> {
                     num(f32::from(*ca) / 255.0),
                     num(f32::from(*cap) / 255.0)
                 ),
+            );
+        }
+        for (&(im, mask), img) in o.images.iter().zip(&p.images) {
+            let mut stream = |n: usize, dict: String, data: &[u8]| {
+                offsets.push(buf.len());
+                debug_assert_eq!(offsets.len(), n, "objects must be emitted in number order");
+                buf.extend_from_slice(format!("{n} 0 obj\n{dict}\nstream\n").as_bytes());
+                buf.extend_from_slice(data);
+                buf.extend_from_slice(b"\nendstream\nendobj\n");
+            };
+            stream(
+                im,
+                format!(
+                    "<< /Type /XObject /Subtype /Image /Width {} /Height {} /ColorSpace /DeviceRGB \
+                     /BitsPerComponent 8 /SMask {mask} 0 R /Length {} >>",
+                    img.width,
+                    img.height,
+                    img.rgb.len()
+                ),
+                &img.rgb,
+            );
+            stream(
+                mask,
+                format!(
+                    "<< /Type /XObject /Subtype /Image /Width {} /Height {} /ColorSpace /DeviceGray \
+                     /BitsPerComponent 8 /Length {} >>",
+                    img.width,
+                    img.height,
+                    img.alpha.len()
+                ),
+                &img.alpha,
             );
         }
     }
