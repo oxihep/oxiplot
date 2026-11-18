@@ -90,6 +90,13 @@ Everything else under `src/` is byte-identical to upstream (with
 lints, so the code stays diffable against upstream. Keep local patches small
 and list them here.
 
+## AI assistance
+
+The changes made here to the vendored ReX code (the skrifa font backend, the
+fixes in the patch list above, the tests) were developed with the help of AI
+coding assistants, under the author's direction, and pass the same tests as
+the rest of the crate. ReX itself is the work of its upstream authors.
+
 ## Tests
 
 - The upstream unit tests in `src/`, including 150 parser snapshots, run
