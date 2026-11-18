@@ -25,6 +25,12 @@ pub trait Hist1dData {
     fn x_time_format(&self) -> Option<String> {
         None
     }
+    /// One label per in-range bin, when the bins are categories (a string or
+    /// integer category axis) rather than numeric intervals. Plotting then
+    /// labels each bin at its centre instead of drawing numeric ticks.
+    fn x_labels(&self) -> Option<Vec<String>> {
+        None
+    }
 }
 
 /// A 2-D binned distribution: `nx × ny` in-range bins.
@@ -78,6 +84,7 @@ pub struct Binned1D {
     edges: Vec<f64>,
     values: Vec<f64>,
     errors: Option<Vec<f64>>,
+    labels: Option<Vec<String>>,
 }
 
 impl Binned1D {
@@ -92,6 +99,7 @@ impl Binned1D {
             edges,
             values,
             errors: None,
+            labels: None,
         })
     }
 
@@ -116,7 +124,39 @@ impl Binned1D {
             edges,
             values,
             errors: None,
+            labels: None,
         }
+    }
+
+    /// Categories: `n` values, one per label, on unit-width bins `[i, i + 1)`.
+    /// Plotting labels each bin with its category instead of numeric ticks.
+    ///
+    /// ```
+    /// use oxiplot::{Axes, Binned1D};
+    /// let h = Binned1D::categories(&["ee", "μμ", "eμ"], vec![120.0, 135.0, 18.0])?;
+    /// let mut ax = Axes::new();
+    /// ax.hist(&h);
+    /// # Ok::<(), oxiplot::Error>(())
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// [`Error::LengthMismatch`] if there is not one value per label.
+    pub fn categories<S: AsRef<str>>(labels: &[S], values: Vec<f64>) -> Result<Self> {
+        check_len("Binned1D values", labels.len(), values.len())?;
+        let edges = (0..=labels.len()).map(|i| i as f64).collect();
+        Binned1D::new(edges, values)?.with_labels(labels)
+    }
+
+    /// Label the bins as categories, one label per bin.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::LengthMismatch`] if there is not one label per value.
+    pub fn with_labels<S: AsRef<str>>(mut self, labels: &[S]) -> Result<Self> {
+        check_len("Binned1D labels", self.values.len(), labels.len())?;
+        self.labels = Some(labels.iter().map(|l| l.as_ref().to_owned()).collect());
+        Ok(self)
     }
 
     /// Set explicit per-bin errors (`n`, one per value).
@@ -143,6 +183,9 @@ impl Hist1dData for Binned1D {
             Some(e) => e[i],
             None => self.values[i].abs().sqrt(),
         }
+    }
+    fn x_labels(&self) -> Option<Vec<String>> {
+        self.labels.clone()
     }
 }
 

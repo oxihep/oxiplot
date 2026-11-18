@@ -228,24 +228,16 @@ pub(crate) fn build(model: &Model, result: &FitResult, opts: &StatBox) -> StatDa
     }
 }
 
-/// Draw the stat box into `g` (the unclipped axis group). `legend_rect` is the
-/// legend's bounding box when a legend is shown, so a top-right stat box can be
-/// stacked beneath it.
-pub(crate) fn draw_stats(
-    g: &mut DrawGroup,
-    ax: &Axes,
-    frame: Rect,
-    data: &StatData,
-    legend_rect: Option<Rect>,
-) {
+/// The box's rectangle at its corner of `frame`, before any stacking under the
+/// legend: where it would sit on its own.
+pub(crate) fn home_rect(ax: &Axes, frame: Rect, data: &StatData) -> Option<Rect> {
     if data.rows.is_empty() {
-        return;
+        return None;
     }
     let s = &ax.style;
     let fs = s.px(s.legend_size_pt);
     let pad = 0.5 * fs;
     let row_h = 1.45 * fs;
-
     let text_w = data
         .rows
         .iter()
@@ -258,12 +250,10 @@ pub(crate) fn draw_stats(
             text::measure(&s.fonts, &row.text, fs, style).width
         })
         .fold(0.0_f32, f32::max);
-
     let box_w = text_w + 2.0 * pad;
     let box_h = data.rows.len() as f32 * row_h + 2.0 * pad;
     let margin = s.px(s.axes_linewidth_pt) + 0.5 * fs;
-
-    let (x0, mut y0) = match data.corner {
+    let (x0, y0) = match data.corner {
         Corner::UpperRight => (frame.right() - margin - box_w, frame.y + margin),
         Corner::UpperLeft => (frame.x + margin, frame.y + margin),
         Corner::LowerRight => (
@@ -272,6 +262,27 @@ pub(crate) fn draw_stats(
         ),
         Corner::LowerLeft => (frame.x + margin, frame.bottom() - margin - box_h),
     };
+    Some(Rect::new(x0, y0, box_w, box_h))
+}
+
+/// Draw the stat box into `g` (the unclipped axis group). `legend_rect` is the
+/// legend's bounding box when a legend is shown, so a top-right stat box can be
+/// stacked beneath it.
+pub(crate) fn draw_stats(
+    g: &mut DrawGroup,
+    ax: &Axes,
+    frame: Rect,
+    data: &StatData,
+    legend_rect: Option<Rect>,
+) {
+    let Some(home) = home_rect(ax, frame, data) else {
+        return;
+    };
+    let s = &ax.style;
+    let fs = s.px(s.legend_size_pt);
+    let pad = 0.5 * fs;
+    let row_h = 1.45 * fs;
+    let (x0, mut y0, box_w, box_h) = (home.x, home.y, home.w, home.h);
     // Stack beneath the legend when the two would overlap (both top-right).
     if let Some(lr) = legend_rect
         && overlaps(lr, Rect::new(x0, y0, box_w, box_h))

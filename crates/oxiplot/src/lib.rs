@@ -20,7 +20,9 @@
 //!
 //! - **Histograms** — [`Axes::hist`]/[`Axes::hist_with`] draw 1-D binned data as an mplhep
 //!   staircase ([`HistType::Step`]/`Fill`/`Band`/`Errorbar`) with `√N`/Sumw2
-//!   error bars.
+//!   error bars, and stacks of them ([`Axes::hist_stack`]). A histogram whose
+//!   bins are categories ([`Hist1dData::x_labels`],
+//!   [`Binned1D::categories`]) is labelled by category.
 //! - **Graphs & profiles** — [`Axes::errorbar`] (points with symmetric or
 //!   asymmetric errors) and [`Axes::profile`]; [`Axes::plot`] for raw `(x, y)`.
 //!   Each has a `*_with` form taking a color and a legend label.
@@ -122,7 +124,7 @@ mod timeaxis;
 mod transform;
 
 pub use artists::{HistType, Marker, ParseHistTypeError, ParseMarkerError};
-pub use axes::{Axes, CurveOpts, ErrorbarOpts, Hist2dOpts, HistOpts};
+pub use axes::{Axes, CurveOpts, ErrorbarOpts, Hist2dOpts, HistOpts, StackOpts};
 pub use cmap::{Colormap, ParseColormapError};
 pub use color::{Color, ParseColorError, TAB10};
 pub use data::{Binned1D, Binned2D, Hist1dData, Hist2dData, PointData, Points};
