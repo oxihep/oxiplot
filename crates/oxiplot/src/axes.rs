@@ -180,11 +180,14 @@ impl Axes {
     /// (e.g. `"Preliminary"`, `"Simulation"`; pass `""` for none). Pair it with
     /// [`hep_rhs`](Axes::hep_rhs) for the luminosity / energy on the right.
     ///
+    /// A collaboration's name belongs only on that collaboration's results;
+    /// for anything else (a demo, a study on open data) use a neutral name.
+    ///
     /// # Examples
     /// ```
     /// # use oxiplot::{Axes, Style};
     /// let mut ax = Axes::with_style(Style::mplhep());
-    /// ax.hep_label("CMS", "Preliminary").hep_rhs("138 fb$^{-1}$ (13 TeV)");
+    /// ax.hep_label("Demo", "Simulation").hep_rhs("138 fb$^{-1}$ (13 TeV)");
     /// ```
     pub fn hep_label(
         &mut self,

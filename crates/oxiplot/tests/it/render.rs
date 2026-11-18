@@ -290,7 +290,7 @@ fn hep_label_adds_glyphs_above_the_frame() {
     let mut labelled = Axes::with_style(Style::mplhep());
     labelled.hist(&gauss_hist());
     labelled
-        .hep_label("CMS", "Preliminary")
+        .hep_label("Demo", "Simulation")
         .hep_rhs("138 fb$^{-1}$ (13 TeV)");
     let n_labelled = occurrences(&labelled.to_svg_string(), "<path");
 
