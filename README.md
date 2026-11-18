@@ -3,6 +3,7 @@
 [![CI](https://github.com/oxihep/oxiplot/actions/workflows/ci.yml/badge.svg)](https://github.com/oxihep/oxiplot/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Rust 1.100+](https://img.shields.io/badge/rust-1.100%2B-orange.svg)](https://www.rust-lang.org)
+[![API docs](https://img.shields.io/badge/docs-API-blue.svg)](https://oxihep.github.io/oxiplot/oxiplot/)
 
 Pure-Rust plotting for high-energy physics: histograms, graphs and 2-D maps to
 **SVG, PNG and PDF**, with a matplotlib-like API and an mplhep-style look. No
