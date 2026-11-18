@@ -97,7 +97,9 @@ mod tests {
         use std::error::Error as _;
         let e: Error = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "no").into();
         let source = e.source().expect("a source");
-        let io = source.downcast_ref::<std::io::Error>().expect("an io::Error");
+        let io = source
+            .downcast_ref::<std::io::Error>()
+            .expect("an io::Error");
         assert_eq!(io.kind(), std::io::ErrorKind::PermissionDenied);
         assert!(Error::BadSize("0x0".into()).source().is_none());
     }

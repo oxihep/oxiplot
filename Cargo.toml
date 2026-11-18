@@ -3,7 +3,7 @@ resolver = "2"
 members = ["crates/*"]
 
 [workspace.package]
-version = "0.4.1"
+version = "0.4.2"
 edition = "2024"
 rust-version = "1.100"
 license = "MIT"
@@ -17,7 +17,7 @@ missing_docs = "warn"
 all = "warn"
 
 [workspace.dependencies]
-oxiplot-tex = { path = "crates/oxiplot-tex", version = "0.4.1" }
+oxiplot-tex = { path = "crates/oxiplot-tex", version = "0.4.2" }
 # Until oxifit is on crates.io it is a git dependency. `version` is kept so the
 # switch is just dropping `git`/`tag`.
 oxifit = { git = "https://github.com/oxihep/oxifit", tag = "v0.1.2", version = "0.1.2" }

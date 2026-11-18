@@ -6,7 +6,10 @@ Notable changes to oxiplot and oxiplot-tex, by release. The format follows
 
 ## [Unreleased]
 
-## [0.4.1]
+## [0.4.2]
+
+The tag `v0.4.1` was cut by mistake on the 0.4.0 commit (its manifest says
+0.4.0); do not use it. 0.4.2 is the release with this fix.
 
 ### Fixed
 
