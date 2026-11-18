@@ -312,6 +312,32 @@ mod placement_tests {
     }
 
     #[test]
+    fn a_filled_histogram_counts_its_inside() {
+        // A legend over the fill hides data as much as one over the outline:
+        // the samples `Best` avoids must cover the area under a filled
+        // histogram, not just its top edge (they used to, so the empty-looking
+        // inside of a stack attracted the legend).
+        let h = crate::Binned1D::new((0..=8).map(f64::from).collect(), vec![10.0; 8]).unwrap();
+        let near_bottom = |histtype| {
+            let mut ax = Axes::new();
+            ax.hist_with(&h, crate::HistOpts::new().histtype(histtype));
+            ax.data_points_px(FRAME)
+                .iter()
+                .filter(|&&(_, y)| y > FRAME.y + 0.6 * FRAME.h && y < FRAME.bottom() - 1.0)
+                .count()
+        };
+        assert!(
+            near_bottom(crate::HistType::Fill) > 100,
+            "the fill's inside is sampled"
+        );
+        assert_eq!(
+            near_bottom(crate::HistType::Step),
+            0,
+            "an outline has no inside"
+        );
+    }
+
+    #[test]
     fn best_prefers_the_upper_right_when_it_is_free() {
         let ax = with_line(&[0.0, 1.0, 2.0], &[1.0, 0.2, 0.0]);
         assert!(is_upper_right(legend_rect(&ax, FRAME).unwrap()));

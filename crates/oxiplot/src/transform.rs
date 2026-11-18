@@ -140,6 +140,12 @@ impl Transform {
         self.box_.bottom() - (t as f32) * self.box_.h
     }
 
+    /// The pixel rectangle the transform maps onto.
+    #[must_use]
+    pub fn frame(&self) -> Rect {
+        self.box_
+    }
+
     /// Map a data point to a pixel point.
     #[must_use]
     pub fn pt(&self, p: (f64, f64)) -> Pt {

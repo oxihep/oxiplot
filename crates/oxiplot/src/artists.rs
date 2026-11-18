@@ -796,6 +796,8 @@ impl Artist {
     pub(crate) fn sample_points(&self, t: &Transform) -> Vec<(f32, f32)> {
         /// Points per segment.
         const STEPS: usize = 8;
+        /// Spacing of the samples inside a filled area, in pixels.
+        const AREA_SPACING: f32 = 8.0;
         let along = |pts: &[(f64, f64)]| -> Vec<(f32, f32)> {
             let px: Vec<(f32, f32)> = pts
                 .iter()
@@ -833,6 +835,38 @@ impl Artist {
                     if v.is_finite() && e > 0.0 {
                         let c = 0.5 * (a.edges[i] + a.edges[i + 1]);
                         pts.push(t.pt((c, v + e)));
+                    }
+                }
+                // A filled histogram or a band covers an area, not just its
+                // outline: sample inside it too, so a legend is not placed
+                // over the fill. Within the frame only, so a log axis's
+                // baseline far below does not spread the samples out of view.
+                if matches!(a.histtype, HistType::Fill | HistType::Band) {
+                    let frame = t.frame();
+                    let clamp = |y: f32| y.clamp(frame.y, frame.bottom());
+                    for i in 0..a.n() {
+                        let v = a.values[i];
+                        if !v.is_finite() {
+                            continue;
+                        }
+                        // A fill spans [0, v]; a band [v − e, v + e].
+                        let (hi, lo) = if a.histtype == HistType::Band {
+                            (v + a.err(i), v - a.err(i))
+                        } else {
+                            (v, 0.0)
+                        };
+                        let (top, base) = (clamp(t.y(hi)), clamp(t.y(lo)));
+                        let (x0, x1) = (t.x(a.edges[i]), t.x(a.edges[i + 1]));
+                        // A grid of about AREA_SPACING pixels: finer than any
+                        // legend, so none fits between the samples.
+                        let nx = ((x1 - x0).abs() / AREA_SPACING).ceil().max(1.0) as usize;
+                        let ny = ((base - top).abs() / AREA_SPACING).ceil().max(1.0) as usize;
+                        for jx in 0..nx {
+                            let x = x0 + (jx as f32 + 0.5) / nx as f32 * (x1 - x0);
+                            for jy in 0..=ny {
+                                pts.push((x, top + jy as f32 / ny as f32 * (base - top)));
+                            }
+                        }
                     }
                 }
                 pts
