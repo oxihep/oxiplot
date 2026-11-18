@@ -68,7 +68,16 @@ impl fmt::Display for Error {
     }
 }
 
-impl std::error::Error for Error {}
+impl std::error::Error for Error {
+    /// The I/O error behind [`Error::Io`]; the other variants carry their whole
+    /// cause in their message.
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Error::Io(e) => Some(e),
+            _ => None,
+        }
+    }
+}
 
 impl From<std::io::Error> for Error {
     fn from(e: std::io::Error) -> Self {
@@ -78,3 +87,18 @@ impl From<std::io::Error> for Error {
 
 /// Crate result alias.
 pub type Result<T> = std::result::Result<T, Error>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_io_error_is_the_source() {
+        use std::error::Error as _;
+        let e: Error = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "no").into();
+        let source = e.source().expect("a source");
+        let io = source.downcast_ref::<std::io::Error>().expect("an io::Error");
+        assert_eq!(io.kind(), std::io::ErrorKind::PermissionDenied);
+        assert!(Error::BadSize("0x0".into()).source().is_none());
+    }
+}
