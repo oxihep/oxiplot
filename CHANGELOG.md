@@ -6,6 +6,21 @@ Notable changes to oxiplot and oxiplot-tex, by release. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- **The legend's `Loc::Best` could sit on a filled histogram.** It counted
+  only a histogram's outline as data, so the inside of a filled histogram or
+  a stack looked empty and attracted the legend. The area under a `Fill`
+  histogram, and between a `Band`'s edges, now counts too.
+
+### Added
+
+- Examples: `data_mc_ratio` (stacked backgrounds, data and a ratio panel on
+  a log scale), `efficiency` (a trigger turn-on with asymmetric Wilson
+  errors), `occupancy_map` (a 15 360-cell detector map drawn as one image),
+  `energy_resolution` (σ/E and its terms on log axes) and
+  `control_plots_report` (a multi-page PDF).
+
 ## [0.4.2]
 
 There is no 0.4.1: a `v0.4.1` tag was cut by mistake on the 0.4.0 commit

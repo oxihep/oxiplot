@@ -69,6 +69,19 @@ ratio.ylim(0.5..1.5).ylabel("Ratio").xlabel("$p_T$ [GeV]");
 fig.ratio(main, ratio).save("spectrum.pdf").unwrap();
 ```
 
+## Examples
+
+Physics figures, written to a temporary folder (`cargo run -p oxiplot
+--example <name>`):
+
+| Example | Shows |
+| --- | --- |
+| [`data_mc_ratio`](crates/oxiplot/examples/data_mc_ratio.rs) | Data over stacked backgrounds and a signal, with an uncertainty band and a data/MC ratio panel, on a log scale |
+| [`efficiency`](crates/oxiplot/examples/efficiency.rs) | A trigger turn-on with asymmetric (Wilson) errors and the true curve |
+| [`occupancy_map`](crates/oxiplot/examples/occupancy_map.rs) | A 120 × 128 η–φ detector map on a log colour scale, drawn as one image |
+| [`energy_resolution`](crates/oxiplot/examples/energy_resolution.rs) | Calorimeter σ/E and its stochastic, noise and constant terms, on log axes |
+| [`control_plots_report`](crates/oxiplot/examples/control_plots_report.rs) | A multi-page PDF of control plots: a 2 × 2 overview, then one page each |
+
 ## Plotting your own data
 
 Plotting methods take anything that implements one of three small traits:
