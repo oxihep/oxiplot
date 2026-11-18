@@ -17,11 +17,29 @@ Notable changes to oxiplot and oxiplot-tex, by release. The format follows
   histogram; plotting then labels each bin at its centre instead of drawing
   numeric ticks (and no minor ticks). `Binned1D::categories(&labels,
   values)` and `Binned1D::with_labels` build one from arrays.
+- **Golden-image tests** (`tests/it/golden.rs`): five complete plots
+  compared with reference PNGs in `tests/golden/`, with a tolerance for
+  anti-aliasing differences between CPUs. Re-record after an intended change
+  with `OXIPLOT_BLESS=1 cargo test -p oxiplot --test it golden`.
 
 ### Changed
 
 - The legend's `Loc::Best` placement keeps off the fit-statistics box, as it
   does off the data; the box then stays in its corner.
+- **SVGs are sized in points.** The `<svg>` element's `width`/`height` are
+  now the figure's physical size (`460.8pt × 345.6pt` for 6.4 × 4.8 in, as
+  matplotlib writes them), matching the PDF; the drawing keeps its pixel
+  `viewBox`. They were the pixel size, so an SVG opened larger than the PDF.
+- **Large heatmaps are one image.** A `hist2d` of 64 × 64 bins or more that
+  is evenly spaced on screen (a regular binning on linear axes) is drawn as
+  one image, a pixel per bin with no smoothing, instead of a rectangle per
+  bin: a 200 × 200 map is an 86 kB SVG and a 210 kB PDF rather than 40 000
+  shapes. Empty bins stay transparent. Needs the `png` feature (for the
+  SVG's embedded PNG); without it, and for smaller or uneven grids, the
+  per-bin rectangles remain.
+- **A narrow axis gets at least two ticks.** The tick step could round so
+  far up that one tick fell inside (a 150 px wide `[-3, 3]` axis showed only
+  `0`); it now drops to the next smaller nice step until two do.
 
 ## [0.3.1]
 

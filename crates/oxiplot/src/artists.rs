@@ -600,6 +600,11 @@ impl ErrorbarArtist {
     }
 }
 
+/// Bins from which a heatmap is drawn as one image rather than a rectangle
+/// per bin (with the `png` feature, which encodes the image for SVG).
+#[cfg(feature = "png")]
+pub(crate) const MESH_IMAGE_MIN_CELLS: usize = 64 * 64;
+
 /// A 2-D color mesh of a `Hist2D` (matplotlib `pcolormesh`). `values[ix][iy]` are
 /// in-range bin contents; cell `(ix, iy)` spans `xedges[ix..ix+1]` × `yedges`.
 #[derive(Debug, Clone)]
@@ -631,9 +636,79 @@ impl MeshArtist {
         ))
     }
 
+    /// The cell colour of a bin value, or `None` to leave it undrawn: empty
+    /// (exactly 0) and non-finite bins, and values the norm cannot place.
+    fn cell_color(&self, v: f64) -> Option<crate::color::Color> {
+        if v == 0.0 || !v.is_finite() {
+            return None;
+        }
+        let frac = self.norm.normalize(v, self.vmin, self.vmax)?;
+        Some(self.cmap.sample(frac))
+    }
+
+    /// Pixel positions of `edges` when they are evenly spaced on screen (a
+    /// regular binning on a linear axis), else `None`.
+    #[cfg(feature = "png")]
+    fn even_pixels(edges: &[f64], to_px: impl Fn(f64) -> f32) -> Option<(f32, f32)> {
+        let (first, last) = (to_px(*edges.first()?), to_px(*edges.last()?));
+        let n = edges.len() - 1;
+        let step = (last - first) / n as f32;
+        let even = edges.iter().enumerate().all(|(i, &e)| {
+            (to_px(e) - (first + step * i as f32)).abs() <= 0.05 * step.abs().max(1e-3)
+        });
+        (even && n > 0 && step != 0.0).then_some((first, last))
+    }
+
+    /// Draw the mesh as one image, one pixel per bin, when it is large and
+    /// evenly spaced on screen: a 500 × 500 map is then one picture instead of
+    /// 250 000 rectangles in an SVG or PDF. Returns whether it did.
+    #[cfg(feature = "png")]
+    fn draw_as_image(&self, t: &Transform, g: &mut DrawGroup) -> bool {
+        let nx = self.values.len();
+        let ny = self.values.first().map_or(0, Vec::len);
+        if nx * ny < MESH_IMAGE_MIN_CELLS
+            || self.values.iter().any(|col| col.len() != ny)
+            || self.xedges.len() != nx + 1
+            || self.yedges.len() != ny + 1
+        {
+            return false;
+        }
+        let (Some((x0, x1)), Some((y0, y1))) = (
+            Self::even_pixels(&self.xedges, |x| t.x(x)),
+            Self::even_pixels(&self.yedges, |y| t.y(y)),
+        ) else {
+            return false;
+        };
+        // Image rows run top to bottom, columns left to right; an inverted
+        // axis flips the order bins are read in.
+        let (flip_x, flip_y) = (x1 < x0, y1 > y0);
+        let mut rgba = vec![0u8; nx * ny * 4];
+        for row in 0..ny {
+            let iy = if flip_y { row } else { ny - 1 - row };
+            for col in 0..nx {
+                let ix = if flip_x { nx - 1 - col } else { col };
+                if let Some(c) = self.cell_color(self.values[ix][iy]) {
+                    let k = (row * nx + col) * 4;
+                    rgba[k..k + 4].copy_from_slice(&[c.r, c.g, c.b, c.a]);
+                }
+            }
+        }
+        g.push(DrawCommand::Image {
+            rect: Rect::new(x0.min(x1), y0.min(y1), (x1 - x0).abs(), (y1 - y0).abs()),
+            width: nx as u32,
+            height: ny as u32,
+            rgba: std::sync::Arc::new(rgba),
+        });
+        true
+    }
+
     fn draw(&self, t: &Transform, _style: &Style, g: &mut DrawGroup) {
         let nx = self.values.len();
         if nx == 0 {
+            return;
+        }
+        #[cfg(feature = "png")]
+        if self.draw_as_image(t, g) {
             return;
         }
         for ix in 0..nx {
@@ -654,13 +729,9 @@ impl MeshArtist {
                 // shows through, instead of being painted the colormap's value-0
                 // color (ROOT COLZ / mplhep `cmin` behavior). Values the norm
                 // cannot place (e.g. ≤ 0 under a log norm) are likewise skipped.
-                if col[iy] == 0.0 || !col[iy].is_finite() {
-                    continue;
-                }
-                let Some(frac) = self.norm.normalize(col[iy], self.vmin, self.vmax) else {
+                let Some(color) = self.cell_color(col[iy]) else {
                     continue;
                 };
-                let color = self.cmap.sample(frac);
                 let y0 = t.y(self.yedges[iy]);
                 let y1 = t.y(self.yedges[iy + 1]);
                 let (ry, rh) = (y0.min(y1), (y1 - y0).abs());

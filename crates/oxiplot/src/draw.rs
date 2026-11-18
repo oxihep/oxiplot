@@ -202,6 +202,21 @@ pub enum DrawCommand {
         /// Optional outline.
         stroke: Option<Stroke>,
     },
+    /// An RGBA image stretched over `rect`, each pixel drawn as a crisp
+    /// rectangle (nearest-neighbour, no smoothing): a large heatmap, one pixel
+    /// per bin. Only heatmaps make one, and only with the `png` feature.
+    #[cfg_attr(not(feature = "png"), allow(dead_code))]
+    Image {
+        /// Where the image goes.
+        rect: Rect,
+        /// The image's width in pixels.
+        width: u32,
+        /// The image's height in pixels.
+        height: u32,
+        /// `width × height` straight (not premultiplied) RGBA pixels, row by
+        /// row from the top.
+        rgba: std::sync::Arc<Vec<u8>>,
+    },
 }
 
 /// A set of draw commands sharing an optional clip rectangle. Data artists are

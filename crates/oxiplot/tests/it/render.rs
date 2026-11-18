@@ -371,8 +371,9 @@ fn svg_is_well_formed_and_sized() {
     let svg = ax.to_svg_string();
     assert!(svg.starts_with("<svg"));
     assert!(svg.ends_with("</svg>"));
+    // 6.4 × 4.8 in, stated in points; the drawing is in 640 × 480 pixels.
     assert!(
-        svg.contains("width=\"640\" height=\"480\""),
+        svg.contains("width=\"460.8pt\" height=\"345.6pt\""),
         "default figure size"
     );
     assert!(svg.contains("viewBox=\"0 0 640 480\""));

@@ -31,6 +31,11 @@ fn nice_num(x: f64, round: bool) -> f64 {
 }
 
 /// Major tick step for a `[lo, hi]` range targeting roughly `target` ticks.
+///
+/// Rounding the range up to a nice number can leave a step so coarse that
+/// only one tick falls inside (`[-3, 3]` with 3 ticks wanted gives a step of
+/// 5: just `0`); the step then drops to the next smaller nice value
+/// (5 → 2 → 1 → 0.5 …) until at least two ticks are in range.
 #[must_use]
 pub fn nice_step(lo: f64, hi: f64, target: usize) -> f64 {
     let span = (hi - lo).abs();
@@ -38,7 +43,31 @@ pub fn nice_step(lo: f64, hi: f64, target: usize) -> f64 {
         return 1.0;
     }
     let range = nice_num(span, false);
-    nice_num(range / (target.max(2) - 1) as f64, true)
+    let mut step = nice_num(range / (target.max(2) - 1) as f64, true);
+    let (lo, hi) = (lo.min(hi), lo.max(hi));
+    for _ in 0..4 {
+        let tol = step * 1e-6;
+        let inside = ((hi + tol) / step).floor() - ((lo - tol) / step).ceil() + 1.0;
+        if inside >= 2.0 {
+            break;
+        }
+        step = smaller_nice(step);
+    }
+    step
+}
+
+/// The next nice number below `step`: 10 → 5 → 2 → 1, times its power of ten.
+fn smaller_nice(step: f64) -> f64 {
+    let exp = step.log10().floor();
+    let base = 10f64.powf(exp);
+    let mantissa = (step / base).round();
+    if mantissa >= 5.0 {
+        2.0 * base
+    } else if mantissa >= 2.0 {
+        base
+    } else {
+        0.5 * base
+    }
 }
 
 /// Major tick positions within `[lo, hi]` (inclusive, with a tiny tolerance).
@@ -268,6 +297,16 @@ mod tests {
     fn ticks_are_exact_multiples_of_the_step() {
         let t = ticks(100000.0, 100001.0, 6);
         assert_eq!(t[3], 100000.6);
+    }
+
+    #[test]
+    fn a_narrow_axis_still_gets_two_ticks() {
+        // A 150 px axis asks for 3 ticks; [-3, 3] at a step of 5 had one.
+        assert_eq!(ticks(-3.0, 3.0, 3), [-2.0, 0.0, 2.0]);
+        assert!(ticks(0.1, 0.9, 3).len() >= 2);
+        // Ranges that already had two or more ticks keep their step.
+        assert_eq!(nice_step(0.0, 10.0, 6), 2.0);
+        assert_eq!(nice_step(0.0, 1000.0, 3), 500.0);
     }
 
     #[test]

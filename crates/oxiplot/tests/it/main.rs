@@ -2,6 +2,7 @@
 //! suite links once. Each module is one topic.
 
 mod features;
+mod golden;
 mod render;
 mod types;
 mod usage;
