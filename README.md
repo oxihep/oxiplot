@@ -17,7 +17,7 @@ Fonts (STIX Two by default, bundled) are read in pure Rust with
 
 ```toml
 [dependencies]
-oxiplot = { git = "https://github.com/oxihep/oxiplot", tag = "v0.2.1" }
+oxiplot = { git = "https://github.com/oxihep/oxiplot", tag = "v0.3.0" }
 ```
 
 ```rust
@@ -36,6 +36,38 @@ ax.legend();
 ax.save("pt.png").unwrap(); // or .svg / .pdf
 ```
 
+## What it draws
+
+- **Histograms** in the mplhep styles (step, fill, error bars, uncertainty
+  band), **graphs** and **profiles** with error bars, **2-D histograms** as
+  a colour mesh with a colorbar (linear, log or symlog colour scale), and
+  analytic **curves**.
+- **Linear or log axes** (`ax.yscale(Scale::Log)`), with decade ticks
+  labelled 10ᵏ, and **time axes**.
+- A **legend** placed where it hides the least data, as matplotlib's
+  `loc="best"` does, or at a chosen corner (`ax.legend_loc(Loc::UpperLeft)`).
+- **Multi-panel figures**: grids (`subplots_grid`, `GridSpec`) and the HEP
+  ratio plot (`ratio_subplots`). The figure makes room for each panel's tick
+  labels, axis labels and title, and the suptitle, so nothing overlaps, and
+  lines up the y-axis labels of a column.
+- **Output** to PNG, SVG and PDF, in memory or to a file, and multi-page PDFs
+  (`PdfPages`). PDF pages are the figure's size in points at any DPI.
+
+```rust
+use oxiplot::{Binned1D, HistOpts, HistType, Scale, Style, ratio_subplots_with};
+
+let edges: Vec<f64> = (0..=25).map(|i| 20.0 * i as f64).collect();
+let falling: Vec<f64> = (0..25).map(|i| 1e6 * (-(i as f64) / 3.0).exp()).collect();
+let h = Binned1D::new(edges, falling).unwrap();
+
+let (fig, mut main, mut ratio) = ratio_subplots_with(Style::mplhep());
+main.hist_with(&h, HistOpts::new().histtype(HistType::Fill).label("background"));
+main.yscale(Scale::Log).ylabel("Events").hep_label("Demo", "Simulation").legend();
+ratio.function(|_| 1.0, 0.0..500.0);
+ratio.ylim(0.5..1.5).ylabel("Ratio").xlabel("$p_T$ [GeV]");
+fig.ratio(main, ratio).save("spectrum.pdf").unwrap();
+```
+
 ## Plotting your own data
 
 Plotting methods take anything that implements one of three small traits:
@@ -48,8 +80,8 @@ independent of any one histogram library: [oxihist](https://github.com/oxihep/ox
 histograms plot with its `plot` feature, oxiroot's ROOT histograms with oxiroot's.
 
 The [plotting guide](https://oxihep.github.io/oxiroot/guide/plotting/) covers
-histogram styles, ratio plots, grids, colormaps, log scales, fonts and output
-options (it uses the `oxiroot::plot` re-export, which is this crate).
+histogram styles, ratio plots, grids, legends, colormaps, log axes, fonts
+and output options (it uses the `oxiroot::plot` re-export, which is this crate).
 
 ## Features
 
