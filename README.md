@@ -18,7 +18,7 @@ Fonts (STIX Two by default, bundled) are read in pure Rust with
 
 ```toml
 [dependencies]
-oxiplot = { git = "https://github.com/oxihep/oxiplot", tag = "v0.7.1" }
+oxiplot = { git = "https://github.com/oxihep/oxiplot", tag = "v0.8.0" }
 ```
 
 ```rust
