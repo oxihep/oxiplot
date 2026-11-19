@@ -6,6 +6,15 @@ Notable changes to oxiplot and oxiplot-tex, by release. The format follows
 
 ## [Unreleased]
 
+## [0.8.0]
+
+### Changed
+
+- **oxifit 0.5.0** behind the `fit` feature: analytic gradients and
+  L-BFGS-B, 2-D and 3-D fits, convolution, a `rayon` feature. A minor
+  version because oxifit's types appear in oxiplot's API; `Axes::model`
+  draws 1-D models (a 2-D model evaluates to `NaN` there).
+
 ## [0.7.1]
 
 ### Changed
