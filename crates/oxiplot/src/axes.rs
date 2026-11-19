@@ -932,6 +932,133 @@ impl Axes {
         self
     }
 
+    /// Draw a 2-D confidence contour from
+    /// [`FitExt::contour`](oxifit::FitExt::contour) as a closed line, with the
+    /// best fit marked by a dot in the same color. Several contours (`Δ = 2.30`
+    /// and `5.99`, 68 % and 95 %) on one axes make the usual nested regions;
+    /// give each a [`label`](CurveOpts::label) for the legend.
+    ///
+    /// # Examples
+    /// ```no_run
+    /// # use oxiplot::{Axes, CurveOpts};
+    /// # use oxifit::{FitData, FitExt, FitOptions, Model};
+    /// # fn demo(data: &impl FitData, model: &Model) -> Result<(), oxifit::FitError> {
+    /// let opts = FitOptions::new();
+    /// let mut ax = Axes::new();
+    /// for (delta, label) in [(2.30, "68 %"), (5.99, "95 %")] {
+    ///     let c = data.contour(model, &opts, "mean", "sigma", delta, 60)?;
+    ///     ax.fit_contour_with(&c, CurveOpts::new().label(label));
+    /// }
+    /// ax.xlabel("mean").ylabel("sigma").legend();
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[cfg(feature = "fit")]
+    pub fn fit_contour(&mut self, contour: &oxifit::Contour) -> &mut Self {
+        self.fit_contour_with(contour, CurveOpts::default())
+    }
+
+    /// Draw a 2-D confidence contour with explicit options (color, legend
+    /// label, line width, dash pattern).
+    #[cfg(feature = "fit")]
+    pub fn fit_contour_with(&mut self, contour: &oxifit::Contour, opts: CurveOpts) -> &mut Self {
+        let mut xs: Vec<f64> = contour.points.iter().map(|p| p.0).collect();
+        let mut ys: Vec<f64> = contour.points.iter().map(|p| p.1).collect();
+        if let (Some(&x0), Some(&y0)) = (xs.first(), ys.first()) {
+            xs.push(x0); // close the loop
+            ys.push(y0);
+        }
+        let color = opts.color.unwrap_or_else(|| self.next_color());
+        self.add_artist(Artist::Line(LineArtist {
+            xs,
+            ys,
+            color,
+            width_pt: opts.linewidth_pt.unwrap_or(self.style.line_width_pt),
+            dash: opts.dash,
+            marker: Marker::None,
+            marker_size_pt: self.style.marker_size_pt,
+            label: opts.label,
+        }));
+        self.add_artist(Artist::Line(LineArtist {
+            xs: vec![contour.best.0],
+            ys: vec![contour.best.1],
+            color,
+            width_pt: 0.0,
+            dash: None,
+            marker: Marker::Circle,
+            marker_size_pt: self.style.marker_size_pt,
+            label: None,
+        }));
+        self
+    }
+
+    /// Draw a profile scan from [`FitExt::profile`](oxifit::FitExt::profile):
+    /// `Δcost` against the scanned parameter, with dashed gray lines at
+    /// `Δ = 1` and `Δ = 4` (where the curve crosses them are the 1σ and 2σ
+    /// interval ends) when the scan reaches them. Points where the refit failed
+    /// are skipped.
+    ///
+    /// # Examples
+    /// ```no_run
+    /// # use oxiplot::Axes;
+    /// # use oxifit::{FitData, FitExt, FitOptions, Model};
+    /// # fn demo(data: &impl FitData, model: &Model) -> Result<(), oxifit::FitError> {
+    /// let p = data.profile(model, &FitOptions::new(), "mean", (90.0, 92.5), 51)?;
+    /// let mut ax = Axes::new();
+    /// ax.fit_profile(&p);
+    /// ax.xlabel("mean").ylabel("$\\Delta\\chi^2$");
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[cfg(feature = "fit")]
+    pub fn fit_profile(&mut self, profile: &oxifit::Profile) -> &mut Self {
+        self.fit_profile_with(profile, CurveOpts::default())
+    }
+
+    /// Draw a profile scan with explicit options for its curve (color, legend
+    /// label, line width, dash pattern); the reference lines stay gray.
+    #[cfg(feature = "fit")]
+    pub fn fit_profile_with(&mut self, profile: &oxifit::Profile, opts: CurveOpts) -> &mut Self {
+        let color = opts.color.unwrap_or_else(|| self.next_color());
+        self.add_artist(Artist::Line(LineArtist {
+            xs: profile.values.clone(),
+            ys: profile.delta.clone(),
+            color,
+            width_pt: opts.linewidth_pt.unwrap_or(self.style.line_width_pt),
+            dash: opts.dash,
+            marker: Marker::None,
+            marker_size_pt: self.style.marker_size_pt,
+            label: opts.label,
+        }));
+        let top = profile
+            .delta
+            .iter()
+            .copied()
+            .filter(|d| d.is_finite())
+            .fold(f64::NEG_INFINITY, f64::max);
+        let (lo, hi) = profile
+            .values
+            .iter()
+            .fold((f64::INFINITY, f64::NEG_INFINITY), |(a, b), &v| {
+                (a.min(v), b.max(v))
+            });
+        for level in [1.0, 4.0] {
+            if top >= level && lo < hi {
+                self.add_artist(Artist::Line(LineArtist {
+                    xs: vec![lo, hi],
+                    ys: vec![level, level],
+                    color: Color::rgb(128, 128, 128),
+                    width_pt: 0.75 * self.style.line_width_pt,
+                    dash: Some(vec![4.0, 3.0]),
+                    marker: Marker::None,
+                    marker_size_pt: self.style.marker_size_pt,
+                    label: None,
+                }));
+            }
+        }
+        self
+    }
+
     /// Resolve the data limits: the caller's limits first, then the data's
     /// own (a histogram's outer edges), then a padded autoscale over every
     /// artist. Always finite with a nonzero span, whatever the data.
@@ -2206,5 +2333,81 @@ mod tests {
         let mut ax = Axes::new();
         ax.profile(&Timed);
         assert!(ax.x_time_format_for_test().is_some());
+    }
+
+    #[cfg(feature = "fit")]
+    mod fit_scans {
+        use super::*;
+        use oxifit::{FitExt, FitOptions, Model};
+
+        fn line() -> (oxifit::Points, Model) {
+            let data = oxifit::Points::new(
+                &[0.0, 1.0, 2.0, 3.0, 4.0, 5.0],
+                &[1.1, 2.9, 5.2, 6.8, 9.1, 11.0],
+                &[0.3, 0.2, 0.4, 0.3, 0.5, 0.2],
+            )
+            .unwrap();
+            (
+                data,
+                Model::polynomial("line", 1).with_params(vec![0.0, 1.0]),
+            )
+        }
+
+        #[test]
+        fn a_contour_is_a_closed_line_and_a_best_fit_dot() {
+            let (data, model) = line();
+            let c = data
+                .contour(&model, &FitOptions::new(), "p0", "p1", 2.30, 16)
+                .unwrap();
+            let mut ax = Axes::new();
+            ax.fit_contour_with(&c, CurveOpts::new().label("68 %"));
+            assert_eq!(ax.artists.len(), 2);
+            let Artist::Line(ring) = &ax.artists[0] else {
+                panic!("the contour is a line");
+            };
+            assert_eq!(ring.xs.len(), 17, "16 points, closed");
+            assert_eq!((ring.xs[0], ring.ys[0]), (ring.xs[16], ring.ys[16]));
+            assert_eq!(ring.label.as_deref(), Some("68 %"));
+            let Artist::Line(dot) = &ax.artists[1] else {
+                panic!("the best fit is a marker");
+            };
+            assert_eq!((dot.xs[0], dot.ys[0]), c.best);
+            assert_eq!(dot.marker, Marker::Circle);
+            assert_eq!(dot.width_pt, 0.0);
+            assert_eq!(dot.color, ring.color);
+            assert!(dot.label.is_none(), "one legend entry per contour");
+            assert!(ax.to_svg_string().contains("<svg"));
+        }
+
+        #[test]
+        fn a_profile_has_reference_lines_where_it_reaches_them() {
+            let (data, model) = line();
+            let fit = data.fit(&model);
+            let (b, e) = (fit.params[1], fit.errors[1]);
+            let opts = FitOptions::new();
+            // ±3σ reaches Δ = 9: both reference lines.
+            let wide = data
+                .profile(&model, &opts, "p1", (b - 3.0 * e, b + 3.0 * e), 21)
+                .unwrap();
+            let mut ax = Axes::new();
+            ax.fit_profile(&wide);
+            assert_eq!(ax.artists.len(), 3);
+            for (artist, level) in ax.artists[1..].iter().zip([1.0, 4.0]) {
+                let Artist::Line(l) = artist else {
+                    panic!("a reference line");
+                };
+                assert_eq!(l.ys, [level, level]);
+                assert_eq!((l.xs[0], l.xs[1]), (wide.values[0], wide.values[20]));
+                assert!(l.dash.is_some() && l.label.is_none());
+            }
+            // ±1.5σ reaches Δ = 2.25: only the 1σ line.
+            let narrow = data
+                .profile(&model, &opts, "p1", (b - 1.5 * e, b + 1.5 * e), 11)
+                .unwrap();
+            let mut ax = Axes::new();
+            ax.fit_profile(&narrow);
+            assert_eq!(ax.artists.len(), 2);
+            assert!(ax.to_svg_string().contains("<svg"));
+        }
     }
 }

@@ -3,7 +3,7 @@ resolver = "2"
 members = ["crates/*"]
 
 [workspace.package]
-version = "0.5.0"
+version = "0.6.0"
 edition = "2024"
 rust-version = "1.100"
 license = "MIT"
@@ -17,10 +17,10 @@ missing_docs = "warn"
 all = "warn"
 
 [workspace.dependencies]
-oxiplot-tex = { path = "crates/oxiplot-tex", version = "0.5.0" }
+oxiplot-tex = { path = "crates/oxiplot-tex", version = "0.6.0" }
 # Until oxifit is on crates.io it is a git dependency. `version` is kept so the
 # switch is just dropping `git`/`tag`.
-oxifit = { git = "https://github.com/oxihep/oxifit", tag = "v0.2.0", version = "0.2.0" }
+oxifit = { git = "https://github.com/oxihep/oxifit", tag = "v0.3.0", version = "0.3.0" }
 # `oxiplot_tex::font::backend::skrifa::SkrifaMathFont` exposes skrifa types
 # (`FontRef`, `OutlinePen`), so oxiplot and oxiplot-tex must resolve the same
 # version.

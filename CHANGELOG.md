@@ -6,6 +6,23 @@ Notable changes to oxiplot and oxiplot-tex, by release. The format follows
 
 ## [Unreleased]
 
+## [0.6.0]
+
+### Added
+
+- **Fit contours and profiles** (the `fit` feature): `Axes::fit_contour`
+  draws a 2-D confidence contour from oxifit's `FitExt::contour` as a closed
+  line with the best fit marked; `Axes::fit_profile` draws a profile scan
+  from `FitExt::profile` with dashed reference lines at `Δ = 1` and `Δ = 4`
+  (the 1σ and 2σ crossings). Both have `_with` variants taking `CurveOpts`.
+- The `fit_scans` example: 68 % and 95 % contours of a resonance's mean and
+  width, and the profile of its mean.
+
+### Changed
+
+- **oxifit 0.3.0** behind the `fit` feature (CMA-ES and Levenberg–Marquardt,
+  sum models, Gaussian constraints, profiles and contours).
+
 ## [0.5.0]
 
 ### Changed
