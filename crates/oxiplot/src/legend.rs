@@ -350,15 +350,7 @@ mod placement_tests {
         // box sits there: the legend goes elsewhere, and the box keeps its
         // corner instead of being pushed down.
         let model = oxifit::Model::gaussian("g").with_params(vec![1.0, 0.0, 1.0]);
-        let result = oxifit::FitResult {
-            params: vec![1.0, 0.0, 1.0],
-            errors: vec![0.1, 0.1, 0.1],
-            minos: None,
-            covariance: None,
-            chi2: 1.0,
-            ndf: 1,
-            valid: true,
-        };
+        let result = oxifit::FitResult::new(vec![1.0, 0.0, 1.0], vec![0.1; 3], 1.0, 1, true);
         let mut ax = with_line(&[0.0, 1.0, 2.0], &[1.0, 0.2, 0.0]);
         ax.fit_stats(&model, &result);
         let stats = ax.stat_box_rect(FRAME).unwrap();

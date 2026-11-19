@@ -6,6 +6,19 @@ Notable changes to oxiplot and oxiplot-tex, by release. The format follows
 
 ## [Unreleased]
 
+## [0.5.0]
+
+### Changed
+
+- **oxifit 0.2.0.** The `fit` feature now builds on oxifit 0.2.0, whose
+  `FitResult` is `#[non_exhaustive]`: build one by hand with
+  `FitResult::new(params, errors, chi2, ndf, valid)`. A breaking change for
+  code that passes oxifit types to `Axes::fit_stats` and friends, hence the
+  minor version.
+- **The fit statistics box leaves out χ²/ndf and Prob for a fit without a
+  χ²** (a robust-loss fit, whose `chi2` oxifit 0.2 reports as `NaN`) instead
+  of printing `NaN`.
+
 ## [0.4.3]
 
 ### Fixed

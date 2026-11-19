@@ -195,13 +195,15 @@ pub(crate) fn build(model: &Model, result: &FitResult, opts: &StatBox) -> StatDa
             bold: true,
         });
     }
-    if opts.show_chi2 {
+    // A robust-loss fit has no χ² (oxifit reports NaN): leave its rows out.
+    let has_chi2 = result.chi2.is_finite();
+    if opts.show_chi2 && has_chi2 {
         rows.push(StatRow {
             text: format!("χ²/ndf = {} / {}", fmt_g(result.chi2, sig), result.ndf),
             bold: false,
         });
     }
-    if opts.show_prob {
+    if opts.show_prob && has_chi2 {
         rows.push(StatRow {
             text: format!("Prob = {}", fmt_g(result.p_value(), sig)),
             bold: false,
@@ -356,15 +358,8 @@ mod tests {
         use oxifit::{FitResult, Model};
 
         let model = Model::new("myfit", &["a", "b"], vec![0.0, 0.0], |_x, _p| 0.0);
-        let r = FitResult {
-            params: vec![1234.5, 2.0],
-            errors: vec![f64::NAN, 0.0], // a NaN error, and a fixed parameter (0 error)
-            minos: None,
-            covariance: None,
-            chi2: 10.0,
-            ndf: 8,
-            valid: true,
-        };
+        // A NaN error, and a fixed parameter (0 error).
+        let r = FitResult::new(vec![1234.5, 2.0], vec![f64::NAN, 0.0], 10.0, 8, true);
 
         let rows = build(&model, &r, &StatBox::new());
         let texts: Vec<&str> = rows.rows.iter().map(|row| row.text.as_str()).collect();
@@ -382,5 +377,23 @@ mod tests {
         // name(false) with no title → no header (first row is the χ²/ndf line).
         let no_header = build(&model, &r, &StatBox::new().name(false));
         assert!(no_header.rows[0].text.starts_with("χ²/ndf"));
+    }
+
+    #[test]
+    fn a_fit_without_a_chi2_shows_no_chi2_or_prob_row() {
+        use oxifit::{FitResult, Model};
+
+        // A robust-loss fit: oxifit reports its χ² as NaN.
+        let model = Model::new("robust", &["a"], vec![0.0], |_x, _p| 0.0);
+        let r = FitResult::new(vec![1.0], vec![0.1], f64::NAN, 5, true);
+        let rows = build(&model, &r, &StatBox::new().prob(true));
+        assert!(
+            rows.rows
+                .iter()
+                .all(|row| !row.text.contains("χ²") && !row.text.starts_with("Prob")),
+            "{:?}",
+            rows.rows.iter().map(|r| &r.text).collect::<Vec<_>>()
+        );
+        assert_eq!(rows.rows.len(), 2, "header + one parameter");
     }
 }
