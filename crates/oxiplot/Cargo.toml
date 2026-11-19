@@ -51,3 +51,7 @@ all-features = true
 
 [lints]
 workspace = true
+
+[[example]]
+name = "fit_scans"
+required-features = ["fit"]

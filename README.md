@@ -18,7 +18,7 @@ Fonts (STIX Two by default, bundled) are read in pure Rust with
 
 ```toml
 [dependencies]
-oxiplot = { git = "https://github.com/oxihep/oxiplot", tag = "v0.5.0" }
+oxiplot = { git = "https://github.com/oxihep/oxiplot", tag = "v0.6.0" }
 ```
 
 ```rust
@@ -81,6 +81,7 @@ Physics figures, written to a temporary folder (`cargo run -p oxiplot
 | [`occupancy_map`](crates/oxiplot/examples/occupancy_map.rs) | A 120 × 128 η–φ detector map on a log colour scale, drawn as one image |
 | [`energy_resolution`](crates/oxiplot/examples/energy_resolution.rs) | Calorimeter σ/E and its stochastic, noise and constant terms, on log axes |
 | [`control_plots_report`](crates/oxiplot/examples/control_plots_report.rs) | A multi-page PDF of control plots: a 2 × 2 overview, then one page each |
+| [`fit_scans`](crates/oxiplot/examples/fit_scans.rs) | 68 % and 95 % contours of a resonance's mean and width, and the profile likelihood of its mean (needs `--features fit`) |
 
 ## Plotting your own data
 
