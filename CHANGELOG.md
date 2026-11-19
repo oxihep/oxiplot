@@ -6,6 +6,13 @@ Notable changes to oxiplot and oxiplot-tex, by release. The format follows
 
 ## [Unreleased]
 
+## [0.7.1]
+
+### Changed
+
+- **oxifit 0.4.1** behind the `fit` feature: its numerical `integrate` no
+  longer hangs on a narrow peak or a `NaN` integrand.
+
 ## [0.7.0]
 
 ### Changed
