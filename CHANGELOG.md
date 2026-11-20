@@ -6,6 +6,16 @@ Notable changes to oxiplot and oxiplot-tex, by release. The format follows
 
 ## [Unreleased]
 
+## [0.9.0]
+
+### Changed
+
+- **oxifit 0.7.0** behind the `fit` feature: a `Cost` trait and `Fitter`,
+  CLs limits and discovery significance, HistFactory-style template fits,
+  sPlot, efficiency fits, bin-integrated fits and an ensemble sampler. A
+  minor version because oxifit's types appear in oxiplot's API; no oxiplot
+  code changes.
+
 ## [0.8.0]
 
 ### Changed
