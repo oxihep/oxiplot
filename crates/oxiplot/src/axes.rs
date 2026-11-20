@@ -95,7 +95,7 @@ pub struct Axes {
     /// Category labels on the y axis (set by [`Axes::y_categories`]).
     y_categories: Option<Vec<(f64, String)>>,
     /// Text placed with [`Axes::text`].
-    annotations: Vec<crate::annotate::Annotation>,
+    pub(crate) annotations: Vec<crate::annotate::Annotation>,
     /// How each axis maps values onto its length.
     xscale: Scale,
     yscale: Scale,
@@ -279,6 +279,11 @@ impl Axes {
 
     /// Every artist's sample points in pixels on a frame at `box_`: what
     /// [`Loc::Best`] keeps the legend off.
+    /// The data-to-pixel transform of a frame at `box_`.
+    pub(crate) fn frame_transform(&self, box_: Rect) -> Transform {
+        self.transform(box_, self.limits())
+    }
+
     pub(crate) fn data_points_px(&self, box_: Rect) -> Vec<(f32, f32)> {
         let t = self.transform(box_, self.limits());
         self.artists

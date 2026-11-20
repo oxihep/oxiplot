@@ -6,6 +6,16 @@ Notable changes to oxiplot and oxiplot-tex, by release. The format follows
 
 ## [Unreleased]
 
+## [0.11.1]
+
+### Fixed
+
+- **The legend's automatic placement keeps off text annotations.**
+  `Loc::Best` counted only the plotted data, so a legend could land on a
+  label placed with `Axes::text`. Covering a label now costs as much as
+  covering the fit-statistics box: a spot over one is taken only if every
+  spot is.
+
 ## [0.11.0]
 
 API review toward 1.0 (breaking).

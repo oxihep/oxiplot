@@ -140,15 +140,18 @@ pub(crate) fn legend_rect(ax: &Axes, box_: Rect) -> Option<Rect> {
             let pts = ax.data_points_px(box_);
             // The fit-statistics box counts as more data than any plot holds:
             // a spot that would cover it is taken only if every spot does.
-            let stats = ax.stat_box_rect(box_);
+            // So does each text annotation: a legend over a label hides it.
+            let mut keep_clear: Vec<Rect> = ax.stat_box_rect(box_).into_iter().collect();
+            keep_clear.extend(ax.annotation_rects_px(box_));
+            let overlaps = |r: &Rect, s: &Rect| {
+                r.x < s.right() && s.x < r.right() && r.y < s.bottom() && s.y < r.bottom()
+            };
             let covered = |r: &Rect| {
-                let on_stats = stats.is_some_and(|s| {
-                    r.x < s.right() && s.x < r.right() && r.y < s.bottom() && s.y < r.bottom()
-                });
+                let hidden = keep_clear.iter().filter(|s| overlaps(r, s)).count();
                 pts.iter()
                     .filter(|&&(x, y)| x >= r.x && x <= r.right() && y >= r.y && y <= r.bottom())
                     .count()
-                    + if on_stats { pts.len() + 1 } else { 0 }
+                    + hidden * (pts.len() + 1)
             };
             Loc::CANDIDATES
                 .iter()
@@ -360,6 +363,28 @@ mod placement_tests {
             && legend.y < stats.bottom()
             && stats.y < legend.bottom();
         assert!(!overlap, "legend {legend:?} over the stat box {stats:?}");
+    }
+
+    #[test]
+    fn best_keeps_off_a_text_annotation() {
+        // The upper right is free of data, but a label sits there: the legend
+        // goes elsewhere.
+        let mut ax = with_line(&[0.0, 1.0, 2.0], &[1.0, 0.2, 0.0]);
+        ax.text_with(
+            0.97,
+            0.95,
+            "a label in the corner",
+            crate::TextOpts::new()
+                .axes_coords(true)
+                .align(crate::HAlign::Right, crate::VAlign::Top),
+        );
+        let label = ax.annotation_rects_px(FRAME)[0];
+        let legend = legend_rect(&ax, FRAME).unwrap();
+        let overlap = legend.x < label.right()
+            && label.x < legend.right()
+            && legend.y < label.bottom()
+            && label.y < legend.bottom();
+        assert!(!overlap, "legend {legend:?} over the label {label:?}");
     }
 
     #[test]
