@@ -227,8 +227,8 @@ impl Figure {
     /// dpi, returning them plus the pixel size used.
     pub(crate) fn render_groups(&self, dpi: Option<f32>) -> (Vec<DrawGroup>, u32, u32) {
         let dpi = self.dpi(dpi);
-        let w = (self.style.figsize_in.0 * dpi).round() as u32;
-        let h = (self.style.figsize_in.1 * dpi).round() as u32;
+        let w = crate::num::round_u32(f64::from(self.style.figsize_in.0 * dpi));
+        let h = crate::num::round_u32(f64::from(self.style.figsize_in.1 * dpi));
         // Every panel draws at the figure's dpi.
         let axes: Vec<Axes> = self
             .axes
@@ -655,7 +655,7 @@ mod tests {
         (0..n)
             .map(|k| {
                 let mut ax = Axes::new();
-                let e: Vec<f64> = (0..=10).map(|i| 100.0 * i as f64).collect();
+                let e: Vec<f64> = (0..=10).map(|i| 100.0 * f64::from(i)).collect();
                 ax.hist(&Binned1D::new(e, vec![12345.0 * (k + 1) as f64; 10]).unwrap());
                 ax.title(format!("Panel {k}"))
                     .xlabel("$p_T$ [GeV]")

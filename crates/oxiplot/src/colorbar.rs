@@ -18,7 +18,7 @@ pub(crate) struct ColorbarSpec {
 
 /// The bar's ticks at a bar height of `h` pixels.
 fn ticks(spec: &ColorbarSpec, h: f32) -> Vec<(f64, String)> {
-    let target = ((h / 50.0).round() as usize).clamp(3, 9);
+    let target = crate::num::to_index(f64::from((h / 50.0).round())).clamp(3, 9);
     spec.norm.colorbar_ticks(spec.vmin, spec.vmax, target)
 }
 
@@ -48,7 +48,7 @@ pub(crate) fn draw_colorbar(g: &mut DrawGroup, rect: Rect, spec: &ColorbarSpec, 
     // Gradient: stacked strips from vmin (bottom) to vmax (top).
     let n = 128;
     for j in 0..n {
-        let frac = j as f64 / (n - 1) as f64;
+        let frac = f64::from(j) / f64::from(n - 1);
         let color = spec.cmap.sample(frac);
         let y_top = rect.bottom() - ((j + 1) as f32 / n as f32) * rect.h;
         let h = rect.h / n as f32 + 0.6; // small overlap to avoid seams
@@ -79,7 +79,7 @@ pub(crate) fn draw_colorbar(g: &mut DrawGroup, rect: Rect, spec: &ColorbarSpec, 
         let Some(frac) = spec.norm.normalize(*v, spec.vmin, spec.vmax) else {
             continue;
         };
-        let py = rect.bottom() - frac as f32 * rect.h;
+        let py = rect.bottom() - crate::num::to_px(frac) * rect.h;
         g.push(DrawCommand::Line {
             p0: (rect.right(), py),
             p1: (rect.right() + tlen, py),

@@ -14,6 +14,7 @@ pub type ParseResult<T> = ::std::result::Result<T, ParseError>;
 
 /// Errors during the layout phase ; currently, these can only be font errors.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub enum LayoutError {
     /// a font error
     Font(FontError)
@@ -21,6 +22,7 @@ pub enum LayoutError {
 
 /// Errors having to do with font file provided
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub enum FontError {
     /// The font does not contain a glyph for the given char.
     MissingGlyphCodepoint(char),
@@ -42,6 +44,7 @@ impl From<FontError> for LayoutError {
 
 /// A generic error type covering any error that may happen during the process.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub enum Error {
     /// a parse error
     Parse(ParseError),

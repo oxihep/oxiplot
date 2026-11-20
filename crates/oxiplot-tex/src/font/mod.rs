@@ -94,7 +94,7 @@ impl FontMetricsCache {
 }
 
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct FontConstants {
     pub subscript_shift_down: Unit<Em>,
     pub subscript_top_max: Unit<Em>,
@@ -263,5 +263,17 @@ impl Default for Family {
 impl Default for Weight {
     fn default() -> Weight {
         Weight::None
+    }
+}
+
+impl std::fmt::Debug for FontMetricsCache {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FontMetricsCache").finish_non_exhaustive()
+    }
+}
+
+impl<F> std::fmt::Debug for Glyph<'_, F> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Glyph").finish_non_exhaustive()
     }
 }

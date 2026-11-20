@@ -50,7 +50,7 @@ fn gauss_hist() -> Binned1D {
 }
 
 fn graph() -> Points {
-    let x: Vec<f64> = (0..8).map(|i| 55.0 + 10.0 * i as f64).collect();
+    let x: Vec<f64> = (0..8).map(|i| 55.0 + 10.0 * f64::from(i)).collect();
     let y: Vec<f64> = x
         .iter()
         .map(|v| 1000.0 * (-0.5 * ((v - 90.0) / 9.0).powi(2)).exp())
@@ -76,7 +76,7 @@ fn th2() -> Binned2D {
 /// profile holds them.
 #[cfg(feature = "png")]
 fn profile() -> Binned1D {
-    let means: Vec<f64> = (0..10).map(|i| 1.5 * (i as f64 + 0.5) + 1.0).collect();
+    let means: Vec<f64> = (0..10).map(|i| 1.5 * (f64::from(i) + 0.5) + 1.0).collect();
     Binned1D::new(edges(10, 0.0, 10.0), means)
         .unwrap()
         .with_errors(vec![(2.0f64 / 3.0).sqrt() / 40f64.sqrt(); 10])
@@ -527,7 +527,7 @@ fn graph_profile_plot_and_function_render() {
             .starts_with(b"\x89PNG")
     );
 
-    let xs: Vec<f64> = (0..50).map(|i| i as f64 * 0.2).collect();
+    let xs: Vec<f64> = (0..50).map(|i| f64::from(i) * 0.2).collect();
     let ys: Vec<f64> = xs.iter().map(|x| x.sin()).collect();
     let mut ax = Axes::new();
     ax.plot(&xs, &ys).unwrap();
@@ -814,7 +814,7 @@ fn fit_stats_box_renders() {
 
     // A clean Gaussian sampled as (x, y, sigma) points, fitted through Points
     // (which implements FitData).
-    let xs: Vec<f64> = (0..40).map(|i| 50.0 + 2.0 * i as f64).collect();
+    let xs: Vec<f64> = (0..40).map(|i| 50.0 + 2.0 * f64::from(i)).collect();
     let ys: Vec<f64> = xs
         .iter()
         .map(|&x| 1000.0 * (-0.5 * ((x - 90.0) / 8.0).powi(2)).exp())

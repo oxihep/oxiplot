@@ -217,7 +217,9 @@ fn emit_image(out: &mut String, rect: Rect, width: u32, height: u32, rgba: &[u8]
         if px[3] == 0 {
             continue;
         }
-        let (col, row) = (i as u32 % width, i as u32 / width);
+        // `i` indexes `width × height` pixels, both `u32`.
+        let i = u32::try_from(i).unwrap_or(u32::MAX);
+        let (col, row) = (i % width, i / width);
         let cell = Rect::new(rect.x + col as f32 * cw, rect.y + row as f32 * ch, cw, ch);
         let fill = Color::rgba(px[0], px[1], px[2], px[3]);
         emit_cmd(

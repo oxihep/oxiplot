@@ -277,9 +277,9 @@ fn render_math(
     // ReX's depth is signed, negative below the baseline.
     Some((
         collector.prims,
-        dims.width as f32,
-        dims.height as f32,
-        -dims.depth as f32,
+        crate::num::to_px(dims.width),
+        crate::num::to_px(dims.height),
+        crate::num::to_px(-dims.depth),
     ))
 }
 
@@ -302,7 +302,11 @@ impl FontBackend<SkrifaMathFont<'_>> for MathCollector {
         // Design units → ems → the run's pixels, flipped to y-down, at the
         // glyph's position.
         let em = f32::from(ctx.units_per_em()).recip();
-        let (scale, px, py) = (scale as f32, pos.x as f32, pos.y as f32);
+        let (scale, px, py) = (
+            crate::num::to_px(scale),
+            crate::num::to_px(pos.x),
+            crate::num::to_px(pos.y),
+        );
         let mut b = PathPen::new(|x, y| (scale * (em * x) + px, -scale * (em * y) + py));
         if ctx.draw_glyph(gid, &mut b) && !b.path.is_empty() {
             self.prims.push(LocalPrim::Fill(b.path));
@@ -313,7 +317,12 @@ impl FontBackend<SkrifaMathFont<'_>> for MathCollector {
 #[cfg(feature = "math")]
 impl GraphicsBackend for MathCollector {
     fn rule(&mut self, pos: Cursor, width: f64, height: f64) {
-        let (x, y, w, h) = (pos.x as f32, pos.y as f32, width as f32, height as f32);
+        let (x, y, w, h) = (
+            crate::num::to_px(pos.x),
+            crate::num::to_px(pos.y),
+            crate::num::to_px(width),
+            crate::num::to_px(height),
+        );
         self.prims.push(LocalPrim::Poly(vec![
             (x, y),
             (x + w, y),

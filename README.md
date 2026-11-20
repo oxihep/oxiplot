@@ -18,7 +18,7 @@ Fonts (STIX Two by default, bundled) are read in pure Rust with
 
 ```toml
 [dependencies]
-oxiplot = { git = "https://github.com/oxihep/oxiplot", tag = "v0.9.0" }
+oxiplot = { git = "https://github.com/oxihep/oxiplot", tag = "v0.10.0" }
 ```
 
 ```rust
@@ -51,6 +51,14 @@ ax.save("pt.png").unwrap(); // or .svg / .pdf
   ratio plot (`ratio_subplots`). The figure makes room for each panel's tick
   labels, axis labels and title, and the suptitle, so nothing overlaps, and
   lines up the y-axis labels of a column.
+- **Bands, lines and text**: `fill_between`, reference lines (`axhline`,
+  `axvline`), text in data or frame coordinates (`text`), contour lines of a
+  grid (`contour`), and category labels on the y axis (`y_categories`).
+- **Result plots**: upper limits against a mass with the expected ±1σ/±2σ
+  Brazil band (`limit_band`), and with the `fit` feature, from oxifit's
+  results: limits (`fit_limits`), nuisance-parameter pulls (`fit_pulls`),
+  the impact ranking (`fit_impacts`), credible regions of an MCMC chain
+  (`fit_posterior`), fit contours and profile scans.
 - **Output** to PNG, SVG and PDF, in memory or to a file, and multi-page PDFs
   (`PdfPages`). PDF pages are the figure's size in points at any DPI.
 

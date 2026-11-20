@@ -45,7 +45,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut toy = Toy(11);
     let mut fill = |m: f64| {
         if (lo..hi).contains(&m) {
-            counts[((m - lo) / width) as usize] += 1.0;
+            #[allow(
+                clippy::cast_possible_truncation,
+                clippy::cast_sign_loss,
+                reason = "inside the histogram range: a bin index"
+            )]
+            {
+                counts[((m - lo) / width) as usize] += 1.0;
+            }
         }
     };
     for _ in 0..3000 {

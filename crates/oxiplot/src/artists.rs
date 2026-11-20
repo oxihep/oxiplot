@@ -12,6 +12,7 @@ use crate::transform::{Bounds, Transform};
 
 /// Marker shape for data points.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[non_exhaustive]
 pub enum Marker {
     /// No marker.
     #[default]
@@ -206,6 +207,7 @@ impl LineArtist {
 
 /// How an mplhep-style histogram is drawn.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[non_exhaustive]
 pub enum HistType {
     /// Staircase outline closed to the baseline (mplhep default).
     #[default]
@@ -695,8 +697,8 @@ impl MeshArtist {
         }
         g.push(DrawCommand::Image {
             rect: Rect::new(x0.min(x1), y0.min(y1), (x1 - x0).abs(), (y1 - y0).abs()),
-            width: nx as u32,
-            height: ny as u32,
+            width: u32::try_from(nx).unwrap_or(u32::MAX),
+            height: u32::try_from(ny).unwrap_or(u32::MAX),
             rgba: std::sync::Arc::new(rgba),
         });
         true
@@ -754,6 +756,165 @@ pub(crate) enum Artist {
     Step(StepArtist),
     Errorbar(ErrorbarArtist),
     Mesh(MeshArtist),
+    Band(BandArtist),
+    RefLine(RefLineArtist),
+    Segments(SegmentsArtist),
+}
+
+/// A filled region between a lower and an upper curve over the same `xs`
+/// (matplotlib `fill_between`): an uncertainty band, a bar.
+#[derive(Debug, Clone)]
+pub(crate) struct BandArtist {
+    pub xs: Vec<f64>,
+    pub lo: Vec<f64>,
+    pub hi: Vec<f64>,
+    pub face: Option<Color>,
+    pub edge: Option<(Color, f32)>,
+    pub label: Option<String>,
+}
+
+impl BandArtist {
+    /// The runs of consecutive points where `x`, `lo` and `hi` are finite:
+    /// a missing value splits the band.
+    fn runs(&self) -> Vec<Vec<usize>> {
+        let mut runs = vec![Vec::new()];
+        for i in 0..self.xs.len().min(self.lo.len()).min(self.hi.len()) {
+            if self.xs[i].is_finite() && self.lo[i].is_finite() && self.hi[i].is_finite() {
+                runs.last_mut().expect("one run").push(i);
+            } else if !runs.last().expect("one run").is_empty() {
+                runs.push(Vec::new());
+            }
+        }
+        runs.retain(|r| !r.is_empty());
+        runs
+    }
+
+    fn bounds(&self) -> Option<Bounds> {
+        let lo = data_bounds(&self.xs, &self.lo);
+        let hi = data_bounds(&self.xs, &self.hi);
+        match (lo, hi) {
+            (Some(a), Some(b)) => Some(a.union(b)),
+            (a, b) => a.or(b),
+        }
+    }
+
+    fn draw(&self, t: &Transform, style: &Style, g: &mut DrawGroup) {
+        for run in self.runs() {
+            let mut pts: Vec<(f32, f32)> = run
+                .iter()
+                .map(|&i| t.pt((self.xs[i], self.hi[i])))
+                .collect();
+            pts.extend(run.iter().rev().map(|&i| t.pt((self.xs[i], self.lo[i]))));
+            g.push(DrawCommand::Polygon {
+                pts,
+                fill: self.face,
+                stroke: self.edge.map(|(c, w)| Stroke::new(c, style.px(w))),
+            });
+        }
+    }
+
+    fn legend(&self) -> Option<LegendItem> {
+        self.label.clone().map(|label| LegendItem {
+            label,
+            handle: LegendHandle::Patch {
+                face: self.face,
+                edge: self.edge.map(|(c, _)| c),
+                width_pt: self.edge.map_or(0.0, |(_, w)| w),
+            },
+        })
+    }
+}
+
+/// A horizontal or vertical line across the whole frame at a data value
+/// (matplotlib `axhline`/`axvline`); it does not widen the axis limits.
+#[derive(Debug, Clone)]
+pub(crate) struct RefLineArtist {
+    pub horizontal: bool,
+    pub value: f64,
+    pub color: Color,
+    pub width_pt: f32,
+    pub dash: Option<Vec<f32>>,
+    pub label: Option<String>,
+}
+
+impl RefLineArtist {
+    fn draw(&self, t: &Transform, style: &Style, g: &mut DrawGroup) {
+        if !self.value.is_finite() {
+            return;
+        }
+        let frame = t.frame();
+        let (p0, p1) = if self.horizontal {
+            let y = t.y(self.value);
+            ((frame.x, y), (frame.right(), y))
+        } else {
+            let x = t.x(self.value);
+            ((x, frame.y), (x, frame.bottom()))
+        };
+        let mut stroke = Stroke::new(self.color, style.px(self.width_pt));
+        stroke.dash = self
+            .dash
+            .as_ref()
+            .map(|d| d.iter().map(|v| style.px(*v)).collect());
+        g.push(DrawCommand::Line { p0, p1, stroke });
+    }
+
+    fn legend(&self) -> Option<LegendItem> {
+        self.label.clone().map(|label| LegendItem {
+            label,
+            handle: LegendHandle::Line {
+                color: self.color,
+                width_pt: self.width_pt,
+                dash: self.dash.clone(),
+                marker: Marker::None,
+                marker_size_pt: 0.0,
+            },
+        })
+    }
+}
+
+/// Unconnected line segments sharing one style: contour lines.
+#[derive(Debug, Clone)]
+pub(crate) struct SegmentsArtist {
+    pub segments: Vec<[(f64, f64); 2]>,
+    pub color: Color,
+    pub width_pt: f32,
+    pub dash: Option<Vec<f32>>,
+    pub label: Option<String>,
+}
+
+impl SegmentsArtist {
+    fn bounds(&self) -> Option<Bounds> {
+        let (xs, ys): (Vec<f64>, Vec<f64>) = self.segments.iter().flatten().copied().unzip();
+        data_bounds(&xs, &ys)
+    }
+
+    fn draw(&self, t: &Transform, style: &Style, g: &mut DrawGroup) {
+        let mut stroke = Stroke::new(self.color, style.px(self.width_pt));
+        stroke.dash = self
+            .dash
+            .as_ref()
+            .map(|d| d.iter().map(|v| style.px(*v)).collect());
+        for [a, b] in &self.segments {
+            g.push(DrawCommand::Line {
+                p0: t.pt(*a),
+                p1: t.pt(*b),
+                stroke: stroke.clone(),
+            });
+        }
+    }
+
+    fn legend(&self) -> Option<LegendItem> {
+        self.label.clone().map(|label| LegendItem {
+            label,
+            handle: LegendHandle::Line {
+                color: self.color,
+                width_pt: self.width_pt,
+                dash: self.dash.clone(),
+                marker: Marker::None,
+                marker_size_pt: 0.0,
+            },
+        })
+    }
 }
 
 impl Artist {
@@ -763,6 +924,9 @@ impl Artist {
             Artist::Step(a) => a.bounds(),
             Artist::Errorbar(a) => a.bounds(),
             Artist::Mesh(a) => a.bounds(),
+            Artist::Band(a) => a.bounds(),
+            Artist::RefLine(_) => None,
+            Artist::Segments(a) => a.bounds(),
         }
     }
 
@@ -772,6 +936,9 @@ impl Artist {
             Artist::Step(a) => a.draw(t, style, g),
             Artist::Errorbar(a) => a.draw(t, style, g),
             Artist::Mesh(a) => a.draw(t, style, g),
+            Artist::Band(a) => a.draw(t, style, g),
+            Artist::RefLine(a) => a.draw(t, style, g),
+            Artist::Segments(a) => a.draw(t, style, g),
         }
     }
 
@@ -782,7 +949,8 @@ impl Artist {
             Artist::Line(a) => &a.ys,
             Artist::Step(a) => &a.values,
             Artist::Errorbar(a) => &a.ys,
-            Artist::Mesh(_) => return None,
+            Artist::Band(a) => &a.lo,
+            Artist::Mesh(_) | Artist::RefLine(_) | Artist::Segments(_) => return None,
         };
         ys.iter()
             .copied()
@@ -859,8 +1027,12 @@ impl Artist {
                         let (x0, x1) = (t.x(a.edges[i]), t.x(a.edges[i + 1]));
                         // A grid of about AREA_SPACING pixels: finer than any
                         // legend, so none fits between the samples.
-                        let nx = ((x1 - x0).abs() / AREA_SPACING).ceil().max(1.0) as usize;
-                        let ny = ((base - top).abs() / AREA_SPACING).ceil().max(1.0) as usize;
+                        let nx = crate::num::to_index(f64::from(
+                            ((x1 - x0).abs() / AREA_SPACING).ceil().max(1.0),
+                        ));
+                        let ny = crate::num::to_index(f64::from(
+                            ((base - top).abs() / AREA_SPACING).ceil().max(1.0),
+                        ));
                         for jx in 0..nx {
                             let x = x0 + (jx as f32 + 0.5) / nx as f32 * (x1 - x0);
                             for jy in 0..=ny {
@@ -881,6 +1053,29 @@ impl Artist {
                 .collect(),
             // A heatmap fills the frame: there is no spot it leaves free.
             Artist::Mesh(_) => Vec::new(),
+            Artist::Band(a) => a
+                .runs()
+                .iter()
+                .flatten()
+                .flat_map(|&i| {
+                    let (x, lo, hi) = (a.xs[i], a.lo[i], a.hi[i]);
+                    [t.pt((x, lo)), t.pt((x, 0.5 * (lo + hi))), t.pt((x, hi))]
+                })
+                .collect(),
+            Artist::RefLine(a) => {
+                let frame = t.frame();
+                (0..=STEPS)
+                    .map(|k| {
+                        let f = k as f32 / STEPS as f32;
+                        if a.horizontal {
+                            (frame.x + f * frame.w, t.y(a.value))
+                        } else {
+                            (t.x(a.value), frame.y + f * frame.h)
+                        }
+                    })
+                    .collect()
+            }
+            Artist::Segments(a) => a.segments.iter().flatten().map(|&p| t.pt(p)).collect(),
         }
     }
 
@@ -890,6 +1085,9 @@ impl Artist {
             Artist::Step(a) => a.legend(),
             Artist::Errorbar(a) => a.legend(),
             Artist::Mesh(_) => None,
+            Artist::Band(a) => a.legend(),
+            Artist::RefLine(a) => a.legend(),
+            Artist::Segments(a) => a.legend(),
         }
     }
 }

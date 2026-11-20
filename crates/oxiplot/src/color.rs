@@ -47,7 +47,7 @@ impl Color {
     #[must_use]
     pub fn with_alpha(self, alpha: f32) -> Self {
         Color {
-            a: (alpha.clamp(0.0, 1.0) * 255.0).round() as u8,
+            a: crate::num::channel(f64::from(alpha.clamp(0.0, 1.0) * 255.0)),
             ..self
         }
     }

@@ -6,6 +6,37 @@ Notable changes to oxiplot and oxiplot-tex, by release. The format follows
 
 ## [Unreleased]
 
+## [0.10.0]
+
+Result plots for limits, template fits and MCMC chains, on oxifit 0.8.0.
+
+### Added
+
+- **Bands, reference lines, text and contours**: `Axes::fill_between`
+  (`FillOpts`: color, opacity, outline, label), `axhline`/`axvline` (which do
+  not widen the limits), `text` in data or frame coordinates (`TextOpts`;
+  `HAlign` and `VAlign` are now public), `contour` (marching squares on a
+  grid), and `y_categories` for named rows.
+- **Result plots**: `Axes::limit_band` draws upper limits with the expected
+  ±1σ (green) and ±2σ (yellow) Brazil band, the expected median and the
+  observed limit. With the `fit` feature: `fit_limits` from oxifit's
+  `UpperLimit`s, `fit_pulls` (a template fit's pulls over the ±1σ/±2σ
+  bands), `fit_impacts` (the impact ranking: pre-fit and post-fit shifts of
+  the parameter of interest) and `fit_posterior` (68 % and 95 % credible
+  regions of two parameters of an MCMC chain, from a smoothed 2-D histogram
+  of the draws).
+
+### Changed
+
+- **oxifit 0.8.0** behind the `fit` feature (NUTS, faster gradient fits).
+- **`#[non_exhaustive]`** on the public enums that may grow — `Marker`,
+  `HistType`, `Colormap`, `Corner`, `TickDir`, `HAlign`, `VAlign` — and on
+  oxiplot-tex's error enums; every public oxiplot-tex type implements
+  `Debug`. A `match` on one of them outside oxiplot needs a `_` arm.
+- **Lints**: the cast lints are on for oxiplot; its float → integer and
+  `f64` → `f32` conversions go through a few helpers that state why each is
+  safe. oxiplot-tex, vendored, keeps its upstream lint levels.
+
 ## [0.9.0]
 
 ### Changed

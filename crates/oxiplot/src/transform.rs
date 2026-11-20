@@ -130,14 +130,14 @@ impl Transform {
     #[must_use]
     pub fn x(&self, dx: f64) -> f32 {
         let t = fraction(dx, self.xmin, self.xmax, self.xscale);
-        self.box_.x + (t as f32) * self.box_.w
+        self.box_.x + crate::num::to_px(t) * self.box_.w
     }
 
     /// Map a data y to a pixel y (inverted).
     #[must_use]
     pub fn y(&self, dy: f64) -> f32 {
         let t = fraction(dy, self.ymin, self.ymax, self.yscale);
-        self.box_.bottom() - (t as f32) * self.box_.h
+        self.box_.bottom() - crate::num::to_px(t) * self.box_.h
     }
 
     /// The pixel rectangle the transform maps onto.

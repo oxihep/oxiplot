@@ -45,7 +45,7 @@ impl TimeFormat {
     #[must_use]
     pub fn label(&self, value: f64) -> String {
         format_time(
-            self.offset.saturating_add(value.round() as i64),
+            self.offset.saturating_add(crate::num::round_i64(value)),
             &self.format,
         )
     }
@@ -127,8 +127,8 @@ pub fn format_time(seconds: i64, format: &str) -> String {
     let in_day = seconds.rem_euclid(86_400);
     let (year, month, day) = civil_from_days(days);
     let (hour, minute, second) = (in_day / 3600, (in_day / 60) % 60, in_day % 60);
-    let month_name = MONTHS[(month as usize).clamp(1, 12) - 1];
-    let weekday = WEEKDAYS[days.rem_euclid(7) as usize];
+    let month_name = MONTHS[usize::try_from(month).unwrap_or(1).clamp(1, 12) - 1];
+    let weekday = WEEKDAYS[usize::try_from(days.rem_euclid(7)).unwrap_or(0)];
     let day_of_year = days - days_from_civil(year, 1, 1) + 1;
 
     let mut out = String::with_capacity(format.len() + 8);
@@ -190,7 +190,7 @@ pub fn time_ticks(lo: f64, hi: f64, target: usize) -> Vec<f64> {
         .copied()
         .find(|&s| s as f64 >= want)
         // Past a year, fall back to whole years.
-        .unwrap_or_else(|| 31_536_000 * ((want / 31_536_000.0).ceil() as i64).max(1));
+        .unwrap_or_else(|| 31_536_000 * crate::num::round_i64((want / 31_536_000.0).ceil()).max(1));
     let step = step as f64;
     let first = (lo / step).ceil() * step;
     let mut ticks = Vec::new();

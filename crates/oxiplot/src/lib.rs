@@ -99,6 +99,7 @@
 
 // The modules are private: every public item is re-exported at the crate root
 // below, so each has one path.
+mod annotate;
 mod artists;
 mod axes;
 mod cmap;
@@ -114,6 +115,7 @@ mod gridspec;
 mod legend;
 mod mathtext;
 mod norm;
+mod num;
 mod render;
 #[cfg(feature = "fit")]
 mod statbox;
@@ -123,6 +125,7 @@ mod ticker;
 mod timeaxis;
 mod transform;
 
+pub use annotate::{FillOpts, TextOpts};
 pub use artists::{HistType, Marker, ParseHistTypeError, ParseMarkerError};
 pub use axes::{Axes, CurveOpts, ErrorbarOpts, Hist2dOpts, HistOpts, StackOpts};
 pub use cmap::{Colormap, ParseColormapError};
@@ -140,6 +143,7 @@ pub use norm::Norm;
 #[cfg(feature = "fit")]
 pub use statbox::{Corner, StatBox};
 pub use style::{Sides, Style, TickDir};
+pub use text::{HAlign, VAlign};
 pub use timeaxis::{TimeFormat, format_time};
 pub use transform::Scale;
 
@@ -176,7 +180,7 @@ mod tests {
             (seed >> 33) as f64 / (1u64 << 31) as f64
         };
         let mut gauss = move || (0..12).map(|_| next()).sum::<f64>() - 6.0;
-        let edges: Vec<f64> = (0..=40).map(|i| 50.0 + 2.0 * i as f64).collect();
+        let edges: Vec<f64> = (0..=40).map(|i| 50.0 + 2.0 * f64::from(i)).collect();
         let samples: Vec<f64> = (0..20000).map(|_| 90.0 + 8.0 * gauss()).collect();
         Binned1D::from_samples(edges, &samples)
     }
@@ -212,7 +216,7 @@ mod tests {
 
     #[test]
     fn line_plot_autoscales() {
-        let xs: Vec<f64> = (0..=100).map(|i| i as f64 * 0.1).collect();
+        let xs: Vec<f64> = (0..=100).map(|i| f64::from(i) * 0.1).collect();
         let ys: Vec<f64> = xs.iter().map(|x| x.sin()).collect();
         let mut ax = Axes::new();
         ax.plot(&xs, &ys).unwrap();
@@ -236,7 +240,7 @@ mod tests {
 
     #[test]
     fn graph_with_legend() {
-        let x: Vec<f64> = (0..6).map(|i| 60.0 + 12.0 * i as f64).collect();
+        let x: Vec<f64> = (0..6).map(|i| 60.0 + 12.0 * f64::from(i)).collect();
         let y: Vec<f64> = x
             .iter()
             .map(|x| 1500.0 * (-0.5 * ((x - 90.0) / 9.0).powi(2)).exp())
@@ -257,13 +261,13 @@ mod tests {
 
     #[test]
     fn hist2d_heatmap_with_colorbar() {
-        let edges: Vec<f64> = (0..=20).map(|i| -3.0 + 0.3 * i as f64).collect();
+        let edges: Vec<f64> = (0..=20).map(|i| -3.0 + 0.3 * f64::from(i)).collect();
         let grid: Vec<Vec<f64>> = (0..20)
             .map(|ix| {
                 (0..20)
                     .map(|iy| {
-                        let x = -3.0 + (ix as f64 + 0.5) * 0.3;
-                        let y = -3.0 + (iy as f64 + 0.5) * 0.3;
+                        let x = -3.0 + (f64::from(ix) + 0.5) * 0.3;
+                        let y = -3.0 + (f64::from(iy) + 0.5) * 0.3;
                         (-(x * x + y * y) / 2.0).exp() * 100.0
                     })
                     .collect()
@@ -753,7 +757,7 @@ mod tests {
         struct Rate(Option<&'static str>);
         impl Hist1dData for Rate {
             fn edges(&self) -> Vec<f64> {
-                (0..=24).map(|i| 3600.0 * i as f64).collect()
+                (0..=24).map(|i| 3600.0 * f64::from(i)).collect()
             }
             fn values(&self) -> Vec<f64> {
                 let mut v = vec![0.0; 24];

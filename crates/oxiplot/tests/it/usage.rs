@@ -29,9 +29,11 @@ fn assert_valid_pdf(pdf: &[u8]) {
 #[test]
 fn data_over_stacked_backgrounds_with_a_ratio_panel() {
     let e = edges(20, 0.0, 200.0);
-    let bkg: Vec<f64> = (0..20).map(|i| 400.0 * (-(i as f64) / 6.0).exp()).collect();
+    let bkg: Vec<f64> = (0..20)
+        .map(|i| 400.0 * (-f64::from(i) / 6.0).exp())
+        .collect();
     let sig: Vec<f64> = (0..20)
-        .map(|i| 60.0 * (-((i as f64 - 10.0) / 2.0).powi(2)).exp())
+        .map(|i| 60.0 * (-((f64::from(i) - 10.0) / 2.0).powi(2)).exp())
         .collect();
     let total: Vec<f64> = bkg.iter().zip(&sig).map(|(b, s)| b + s).collect();
     let data: Vec<f64> = total.iter().map(|t| t.round()).collect();
