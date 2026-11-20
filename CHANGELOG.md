@@ -6,6 +6,10 @@ Notable changes to oxiplot and oxiplot-tex, by release. The format follows
 
 ## [Unreleased]
 
+## [0.10.0]
+
+Result plots for limits, template fits and MCMC chains, on oxifit 0.8.0.
+
 ### Added
 
 - **Bands, reference lines, text and contours**: `Axes::fill_between`
@@ -24,6 +28,7 @@ Notable changes to oxiplot and oxiplot-tex, by release. The format follows
 
 ### Changed
 
+- **oxifit 0.8.0** behind the `fit` feature (NUTS, faster gradient fits).
 - **`#[non_exhaustive]`** on the public enums that may grow — `Marker`,
   `HistType`, `Colormap`, `Corner`, `TickDir`, `HAlign`, `VAlign` — and on
   oxiplot-tex's error enums; every public oxiplot-tex type implements
