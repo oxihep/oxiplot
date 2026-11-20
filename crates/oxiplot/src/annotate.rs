@@ -133,6 +133,41 @@ pub(crate) struct Annotation {
 }
 
 impl Annotation {
+    /// The anchor in pixels; `None` for a non-finite data position.
+    fn anchor(&self, t: &Transform) -> Option<(f32, f32)> {
+        if self.opts.axes_coords {
+            let f = t.frame();
+            Some((
+                f.x + crate::num::to_px(self.x) * f.w,
+                f.bottom() - crate::num::to_px(self.y) * f.h,
+            ))
+        } else if self.x.is_finite() && self.y.is_finite() {
+            Some(t.pt((self.x, self.y)))
+        } else {
+            None
+        }
+    }
+
+    /// The text's box in pixels, as drawn: what the legend keeps clear of.
+    pub(crate) fn rect(&self, t: &Transform, style: &Style) -> Option<crate::draw::Rect> {
+        let (px, py) = self.anchor(t)?;
+        let size = style.px(self.opts.size_pt.unwrap_or(style.font_size_pt));
+        let (w, ascent, descent) = crate::mathtext::label_extents(&style.fonts, &self.text, size);
+        let h = ascent + descent;
+        let x = match self.opts.halign {
+            HAlign::Center => px - w / 2.0,
+            HAlign::Right => px - w,
+            _ => px,
+        };
+        let y = match self.opts.valign {
+            VAlign::Top => py,
+            VAlign::Middle => py - h / 2.0,
+            VAlign::Bottom => py - h,
+            _ => py - ascent,
+        };
+        Some(crate::draw::Rect::new(x, y, w, h))
+    }
+
     pub(crate) fn draw(&self, t: &Transform, style: &Style, g: &mut DrawGroup) {
         let (px, py) = if self.opts.axes_coords {
             let f = t.frame();
@@ -248,6 +283,15 @@ fn marching_squares(x: &[f64], y: &[f64], z: &[Vec<f64>], level: f64) -> Vec<[(f
 }
 
 impl Axes {
+    /// The text annotations' boxes in pixels, on a frame at `box_`.
+    pub(crate) fn annotation_rects_px(&self, box_: crate::draw::Rect) -> Vec<crate::draw::Rect> {
+        let t = self.frame_transform(box_);
+        self.annotations
+            .iter()
+            .filter_map(|a| a.rect(&t, &self.style))
+            .collect()
+    }
+
     /// Fill the region between `lo` and `hi` over `xs` (matplotlib
     /// `fill_between`), in the next cycle color at 30 % opacity. A
     /// non-finite value splits the band.
