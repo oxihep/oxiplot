@@ -16,7 +16,7 @@ API review toward 1.0 (breaking).
   data `Points` whenever both were glob-imported (as oxiroot's prelude and
   `oxiroot::plot` are).
 - **Toggles take a `bool`**, so they can be switched off: `FillOpts::hollow`,
-  `TextOpts::axes_coords`, `SaveOpts::transparent`, `SubplotOpts::sharex` /
+  `TextOpts::axes_coords`, `SaveOpts::transparent`, `Figure::sharex` /
   `sharey`, `HistOpts::yerr`, `ErrorbarOpts::line` and `Hist2dOpts::log`
   (`log(false)` is a linear color scale).
 - **`#[non_exhaustive]`** on `Style`, `GridSpec`, `Sides` and `TimeFormat`:
