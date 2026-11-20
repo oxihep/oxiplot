@@ -51,10 +51,10 @@ impl FillOpts {
         self.edge = Some((c, width));
         self
     }
-    /// No fill: the outline only (with [`edge`](Self::edge)).
+    /// With `on`, no fill: the outline only (with [`edge`](Self::edge)).
     #[must_use]
-    pub fn hollow(mut self) -> Self {
-        self.no_face = true;
+    pub fn hollow(mut self, on: bool) -> Self {
+        self.no_face = on;
         self
     }
     /// The legend label.
@@ -114,11 +114,11 @@ impl TextOpts {
         self.valign = v;
         self
     }
-    /// Read the position as a fraction of the frame — `(0, 0)` its lower
-    /// left, `(1, 1)` its upper right — instead of data values.
+    /// With `on`, read the position as a fraction of the frame — `(0, 0)` its
+    /// lower left, `(1, 1)` its upper right — instead of data values.
     #[must_use]
-    pub fn axes_coords(mut self) -> Self {
-        self.axes_coords = true;
+    pub fn axes_coords(mut self, on: bool) -> Self {
+        self.axes_coords = on;
         self
     }
 }
@@ -351,7 +351,7 @@ impl Axes {
     }
 
     /// [`text`](Self::text) with options — size, color, anchoring, and axes
-    /// coordinates (`TextOpts::new().axes_coords()` for a fixed spot, such as
+    /// coordinates (`TextOpts::new().axes_coords(true)` for a fixed spot, such as
     /// `(0.05, 0.9)` near the upper left).
     pub fn text_with(
         &mut self,

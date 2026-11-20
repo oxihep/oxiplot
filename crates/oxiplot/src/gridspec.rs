@@ -10,6 +10,7 @@ use crate::draw::Rect;
 /// and `height_ratios`/`width_ratios` scale the rows/columns to fill the area
 /// between the figure margins.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct GridSpec {
     /// Number of rows.
     pub nrows: usize,

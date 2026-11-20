@@ -12,6 +12,7 @@
 
 /// A time axis's format: how a label reads, and the epoch its values count from.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct TimeFormat {
     /// The `strftime`-style format for a label.
     pub format: String,

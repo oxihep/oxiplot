@@ -9,7 +9,7 @@
 //! cargo run -p oxiplot --example efficiency
 //! ```
 
-use oxiplot::{Axes, Color, CurveOpts, ErrorbarOpts, Points, Style};
+use oxiplot::{Axes, Color, CurveOpts, ErrorbarOpts, Style, XyPoints};
 
 /// The 68 % Wilson score interval for `k` passes out of `n`.
 fn wilson(k: f64, n: f64) -> (f64, f64) {
@@ -43,7 +43,7 @@ fn main() -> oxiplot::Result<()> {
         hi.push(h - k / n);
         xerr.push(1.25);
     }
-    let points = Points::new(x, eff)?
+    let points = XyPoints::new(x, eff)?
         .with_y_errors_asym(lo, hi)?
         .with_x_errors(xerr)?;
 

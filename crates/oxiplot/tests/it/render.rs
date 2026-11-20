@@ -10,7 +10,7 @@ use oxiplot::Norm;
 use oxiplot::SaveOpts;
 use oxiplot::{
     Axes, Binned1D, Binned2D, Color, CurveOpts, Error, ErrorbarOpts, FontSet, Hist2dOpts, HistOpts,
-    HistType, PdfPages, Points, Style, ratio_subplots, subplots, subplots_grid,
+    HistType, PdfPages, Style, XyPoints, ratio_subplots, subplots, subplots_grid,
 };
 
 // --- deterministic fixtures (a tiny LCG → reproducible bytes, no rng dep) ---
@@ -49,14 +49,14 @@ fn gauss_hist() -> Binned1D {
     Binned1D::from_samples(edges(40, 50.0, 130.0), &samples)
 }
 
-fn graph() -> Points {
+fn graph() -> XyPoints {
     let x: Vec<f64> = (0..8).map(|i| 55.0 + 10.0 * f64::from(i)).collect();
     let y: Vec<f64> = x
         .iter()
         .map(|v| 1000.0 * (-0.5 * ((v - 90.0) / 9.0).powi(2)).exp())
         .collect();
     let e: Vec<f64> = y.iter().map(|v| v.sqrt().max(5.0)).collect();
-    Points::new(x.clone(), y)
+    XyPoints::new(x.clone(), y)
         .unwrap()
         .with_x_errors(vec![5.0; x.len()])
         .unwrap()
@@ -353,7 +353,7 @@ fn transparency_changes_the_raster() {
     let mut ax = Axes::new();
     ax.hist(&gauss_hist());
     let opaque = ax.to_png_bytes(SaveOpts::new()).unwrap();
-    let transparent = ax.to_png_bytes(SaveOpts::new().transparent()).unwrap();
+    let transparent = ax.to_png_bytes(SaveOpts::new().transparent(true)).unwrap();
     assert_ne!(
         opaque, transparent,
         "the transparent flag must affect the output"
@@ -431,7 +431,7 @@ fn all_histtypes_render() {
     let n = 40;
     let svg_of = |t: HistType| {
         let mut ax = Axes::new();
-        ax.hist_with(&h, HistOpts::new().histtype(t).yerr());
+        ax.hist_with(&h, HistOpts::new().histtype(t).yerr(true));
         ax.to_svg_string()
     };
 
@@ -488,7 +488,7 @@ fn all_histtypes_render() {
 fn graph_profile_plot_and_function_render() {
     // symmetric + asymmetric error graphs
     let sym = graph();
-    let asym = Points::new(vec![1.0, 2.0, 3.0], vec![3.0, 4.0, 3.5])
+    let asym = XyPoints::new(vec![1.0, 2.0, 3.0], vec![3.0, 4.0, 3.5])
         .unwrap()
         .with_x_errors_asym(vec![0.1, 0.1, 0.1], vec![0.2, 0.2, 0.2])
         .unwrap()
@@ -645,7 +645,7 @@ fn shared_axes_and_suptitle_add_content() {
         let (mut fig, mut axs) = subplots_grid(1, 2);
         axs[0].hist(&h);
         axs[1].hist(&h);
-        fig = fig.sharex().sharey();
+        fig = fig.sharex(true).sharey(true);
         if suptitle {
             fig = fig.suptitle("$Z \\to \\mu\\mu$");
         }
@@ -731,7 +731,7 @@ fn empty_axes_renders_without_panicking() {
 #[test]
 fn mplhep_style_renders() {
     let mut ax = Axes::with_style(Style::mplhep());
-    ax.hist_with(&gauss_hist(), HistOpts::new().yerr().label("MC"));
+    ax.hist_with(&gauss_hist(), HistOpts::new().yerr(true).label("MC"));
     ax.grid_minor();
     ax.legend();
     assert!(ax.to_svg_string().contains("<svg"));
@@ -921,7 +921,7 @@ fn log_norm_changes_heatmap_and_is_valid() {
     };
     let log = {
         let mut ax = Axes::new();
-        ax.hist2d_with(&h, Hist2dOpts::new().label("entries").log());
+        ax.hist2d_with(&h, Hist2dOpts::new().label("entries").log(true));
         ax.to_png_bytes(SaveOpts::new()).unwrap()
     };
     // Both render to real PNGs...
@@ -936,7 +936,7 @@ fn log_norm_colorbar_shows_decade_ticks() {
     let w = [1.0, 10.0, 100.0, 1000.0, 10000.0, 100000.0];
     let h = binned2d(6, (0.0, 6.0), 1, (0.0, 1.0), |ix, _| w[ix]);
     let mut ax = Axes::new();
-    ax.hist2d_with(&h, Hist2dOpts::new().label("weight").log());
+    ax.hist2d_with(&h, Hist2dOpts::new().label("weight").log(true));
     let svg = ax.to_svg_string();
     assert!(svg.starts_with("<svg"));
     // The colorbar tick labels are drawn as glyph paths, so we can't grep the

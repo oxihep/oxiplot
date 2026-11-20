@@ -3,7 +3,7 @@
 
 use oxiplot::{
     Axes, Binned1D, Binned2D, Color, CurveOpts, ErrorbarOpts, Figure, GridSpec, Hist2dOpts,
-    HistOpts, HistType, Norm, Points, Style, ratio_subplots_with, subplots_grid_with,
+    HistOpts, HistType, Norm, Style, XyPoints, ratio_subplots_with, subplots_grid_with,
 };
 
 fn edges(n: usize, lo: f64, hi: f64) -> Vec<f64> {
@@ -58,7 +58,7 @@ fn data_over_stacked_backgrounds_with_a_ratio_panel() {
             .color(Color::BLACK)
             .label("stat. unc."),
     );
-    let pts = Points::new(centers.clone(), data.clone())
+    let pts = XyPoints::new(centers.clone(), data.clone())
         .unwrap()
         .with_y_errors(data.iter().map(|d| d.sqrt()).collect())
         .unwrap();
@@ -68,7 +68,7 @@ fn data_over_stacked_backgrounds_with_a_ratio_panel() {
     let r: Vec<f64> = data.iter().zip(&total).map(|(d, t)| d / t).collect();
     let rerr: Vec<f64> = data.iter().zip(&total).map(|(d, t)| d.sqrt() / t).collect();
     ratio.errorbar_with(
-        &Points::new(centers, r)
+        &XyPoints::new(centers, r)
             .unwrap()
             .with_y_errors(rerr)
             .unwrap(),
@@ -100,7 +100,7 @@ fn empty_and_missing_bins_render() {
             .unwrap()
             .with_errors(vec![f64::NAN, 1.0, 1.0])
             .unwrap(),
-        HistOpts::new().yerr(),
+        HistOpts::new().yerr(true),
     );
     for histtype in [HistType::Fill, HistType::Band, HistType::Errorbar] {
         ax.hist_with(
@@ -109,8 +109,8 @@ fn empty_and_missing_bins_render() {
         );
     }
     ax.errorbar_with(
-        &Points::new(vec![0.5, f64::NAN, 1.5], vec![1.0, 2.0, f64::NEG_INFINITY]).unwrap(),
-        ErrorbarOpts::new().line(),
+        &XyPoints::new(vec![0.5, f64::NAN, 1.5], vec![1.0, 2.0, f64::NEG_INFINITY]).unwrap(),
+        ErrorbarOpts::new().line(true),
     );
     ax.function(|x| 1.0 / x, -1.0..1.0);
     ax.legend();
@@ -145,7 +145,7 @@ fn heatmaps_with_holes_and_extremes() {
     let h = Binned2D::new(e.clone(), e, grid).unwrap();
     for opts in [
         Hist2dOpts::new(),
-        Hist2dOpts::new().log().label("entries"),
+        Hist2dOpts::new().log(true).label("entries"),
         Hist2dOpts::new().norm(Norm::SymLog { linthresh: 1.0 }),
         Hist2dOpts::new().vrange(10.0..1.0),
     ] {
@@ -170,7 +170,11 @@ fn a_shared_grid_of_panels() {
         .unwrap();
         ax.legend().grid();
     }
-    let fig: Figure = fig.sharex().sharey().suptitle("Four panels").with_axes(axs);
+    let fig: Figure = fig
+        .sharex(true)
+        .sharey(true)
+        .suptitle("Four panels")
+        .with_axes(axs);
     assert_valid_svg(&fig.to_svg_string());
 }
 

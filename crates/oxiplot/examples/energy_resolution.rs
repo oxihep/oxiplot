@@ -15,7 +15,7 @@
 //! cargo run -p oxiplot --example energy_resolution
 //! ```
 
-use oxiplot::{Axes, Color, CurveOpts, ErrorbarOpts, Points, Scale, Style};
+use oxiplot::{Axes, Color, CurveOpts, ErrorbarOpts, Scale, Style, XyPoints};
 
 const A: f64 = 0.10; // 10 %/√E
 const B: f64 = 0.25; // 250 MeV noise
@@ -34,7 +34,7 @@ fn main() -> oxiplot::Result<()> {
         .map(|(i, &e)| total(e) * (1.0 + 0.04 * (i as f64 * 2.3).sin()))
         .collect();
     let errs: Vec<f64> = res.iter().map(|r| 0.04 * r).collect();
-    let points = Points::new(energies.to_vec(), res)?.with_y_errors(errs)?;
+    let points = XyPoints::new(energies.to_vec(), res)?.with_y_errors(errs)?;
 
     let mut ax = Axes::with_style(Style::mplhep());
     ax.errorbar_with(

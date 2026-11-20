@@ -6,7 +6,7 @@
 //!
 //! Any data can implement them: [oxiroot](https://github.com/oxihep/oxiroot)'s
 //! histograms and graphs do (its `plot` feature). For data you already hold as
-//! plain arrays, [`Binned1D`], [`Binned2D`] and [`Points`] implement them for
+//! plain arrays, [`Binned1D`], [`Binned2D`] and [`XyPoints`] implement them for
 //! you, the way mplhep's `histplot(values, bins)` takes arrays.
 
 use crate::error::{Error, Result};
@@ -245,35 +245,35 @@ impl Hist2dData for Binned2D {
     }
 }
 
-/// Points held as plain arrays, with optional symmetric or asymmetric error
+/// x–y points held as plain arrays, with optional symmetric or asymmetric error
 /// bars.
 ///
 /// ```
-/// use oxiplot::{Axes, Points};
+/// use oxiplot::{Axes, XyPoints};
 ///
-/// let pts = Points::new(vec![1.0, 2.0, 3.0], vec![2.0, 4.0, 3.0])?
+/// let pts = XyPoints::new(vec![1.0, 2.0, 3.0], vec![2.0, 4.0, 3.0])?
 ///     .with_y_errors(vec![0.3, 0.5, 0.4])?;
 /// let mut ax = Axes::new();
 /// ax.errorbar(&pts);
 /// # Ok::<(), oxiplot::Error>(())
 /// ```
 #[derive(Clone, Debug, PartialEq)]
-pub struct Points {
+pub struct XyPoints {
     xs: Vec<f64>,
     ys: Vec<f64>,
     x_errors: Option<(Vec<f64>, Vec<f64>)>,
     y_errors: Option<(Vec<f64>, Vec<f64>)>,
 }
 
-impl Points {
+impl XyPoints {
     /// Points at `(xs[i], ys[i])`, with no error bars.
     ///
     /// # Errors
     ///
     /// [`Error::LengthMismatch`] if `ys` and `xs` differ in length.
     pub fn new(xs: Vec<f64>, ys: Vec<f64>) -> Result<Self> {
-        check_len("Points ys", xs.len(), ys.len())?;
-        Ok(Points {
+        check_len("XyPoints ys", xs.len(), ys.len())?;
+        Ok(XyPoints {
             xs,
             ys,
             x_errors: None,
@@ -296,8 +296,8 @@ impl Points {
     ///
     /// [`Error::LengthMismatch`] if there is not one pair per point.
     pub fn with_x_errors_asym(mut self, low: Vec<f64>, high: Vec<f64>) -> Result<Self> {
-        check_len("Points x errors (low)", self.xs.len(), low.len())?;
-        check_len("Points x errors (high)", self.xs.len(), high.len())?;
+        check_len("XyPoints x errors (low)", self.xs.len(), low.len())?;
+        check_len("XyPoints x errors (high)", self.xs.len(), high.len())?;
         self.x_errors = Some((low, high));
         Ok(self)
     }
@@ -317,14 +317,14 @@ impl Points {
     ///
     /// [`Error::LengthMismatch`] if there is not one pair per point.
     pub fn with_y_errors_asym(mut self, low: Vec<f64>, high: Vec<f64>) -> Result<Self> {
-        check_len("Points y errors (low)", self.xs.len(), low.len())?;
-        check_len("Points y errors (high)", self.xs.len(), high.len())?;
+        check_len("XyPoints y errors (low)", self.xs.len(), low.len())?;
+        check_len("XyPoints y errors (high)", self.xs.len(), high.len())?;
         self.y_errors = Some((low, high));
         Ok(self)
     }
 }
 
-impl PointData for Points {
+impl PointData for XyPoints {
     fn xs(&self) -> Vec<f64> {
         self.xs.clone()
     }
@@ -375,8 +375,8 @@ mod tests {
                 .is_err()
         );
         assert!(Binned2D::new(vec![0.0, 1.0], vec![0.0, 1.0, 2.0], vec![vec![1.0]]).is_err());
-        assert!(Points::new(vec![1.0], vec![]).is_err());
-        let p = Points::new(vec![1.0, 2.0], vec![3.0, 4.0]).unwrap();
+        assert!(XyPoints::new(vec![1.0], vec![]).is_err());
+        let p = XyPoints::new(vec![1.0, 2.0], vec![3.0, 4.0]).unwrap();
         assert!(p.clone().with_y_errors(vec![0.1]).is_err());
         let p = p
             .with_y_errors_asym(vec![0.1, 0.2], vec![0.3, 0.4])

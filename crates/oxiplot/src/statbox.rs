@@ -213,7 +213,7 @@ pub(crate) fn build(model: &Model, result: &FitResult, opts: &StatBox) -> StatDa
     }
     for (i, &value) in result.params.iter().enumerate() {
         let name = model
-            .param_names
+            .param_names()
             .get(i)
             .cloned()
             .unwrap_or_else(|| format!("p{i}"));

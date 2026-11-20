@@ -37,7 +37,7 @@ impl Hist2dData for Grid {
     }
 }
 
-/// Points with symmetric y errors.
+/// XyPoints with symmetric y errors.
 struct Measurements;
 
 impl PointData for Measurements {
