@@ -92,6 +92,10 @@ pub struct Axes {
     /// Category labels at the bin centres, when the x axis is categorical
     /// (adopted from plotted data that names its bins).
     x_categories: Option<Vec<(f64, String)>>,
+    /// Category labels on the y axis (set by [`Axes::y_categories`]).
+    y_categories: Option<Vec<(f64, String)>>,
+    /// Text placed with [`Axes::text`].
+    annotations: Vec<crate::annotate::Annotation>,
     /// How each axis maps values onto its length.
     xscale: Scale,
     yscale: Scale,
@@ -131,6 +135,8 @@ impl Axes {
             ytick_area: None,
             legend_loc: Loc::Best,
             x_categories: None,
+            y_categories: None,
+            annotations: Vec::new(),
             xscale: Scale::Linear,
             yscale: Scale::Linear,
             #[cfg(feature = "fit")]
@@ -155,6 +161,14 @@ impl Axes {
         let c = self.style.cycle(self.color_idx);
         self.color_idx += 1;
         c
+    }
+
+    pub(crate) fn annotations_mut(&mut self) -> &mut Vec<crate::annotate::Annotation> {
+        &mut self.annotations
+    }
+
+    pub(crate) fn set_y_categories(&mut self, cats: Vec<(f64, String)>) {
+        self.y_categories = Some(cats);
     }
 
     pub(crate) fn add_artist(&mut self, a: Artist) {
@@ -1068,7 +1082,7 @@ impl Axes {
             .iter()
             .filter_map(Artist::bounds)
             .reduce(Bounds::union);
-        let m = self.style.margin as f64;
+        let m = f64::from(self.style.margin);
 
         let (xmin, xmax) = match self.xscale {
             Scale::Log => log_range(
@@ -1128,6 +1142,15 @@ impl Axes {
         }
     }
 
+    /// Minor y ticks: none on a category axis.
+    fn y_minor_ticks(&self, ymin: f64, ymax: f64, majors: &[f64]) -> Vec<f64> {
+        if self.y_categories.is_some() {
+            Vec::new()
+        } else {
+            Self::minor_ticks(ymin, ymax, majors, self.yscale)
+        }
+    }
+
     /// Minor x ticks: none on a category axis, where they would mean nothing.
     fn x_minor_ticks(&self, xmin: f64, xmax: f64, majors: &[f64]) -> Vec<f64> {
         if self.x_categories.is_some() {
@@ -1173,8 +1196,8 @@ impl Axes {
     /// follows the frame's size).
     fn tick_layout(&self, box_: Rect) -> TickLayout {
         let (xmin, xmax, ymin, ymax) = self.limits();
-        let xtarget = ((box_.w / 70.0).round() as usize).clamp(3, 11);
-        let ytarget = ((box_.h / 50.0).round() as usize).clamp(3, 9);
+        let xtarget = crate::num::to_index(f64::from((box_.w / 70.0).round())).clamp(3, 11);
+        let ytarget = crate::num::to_index(f64::from((box_.h / 50.0).round())).clamp(3, 9);
         // A time axis steps in minutes, hours or days, not in "nice" decimals.
         let (xticks, xlabels) = match (&self.x_time, self.xscale) {
             // A category axis: one label at each bin centre in view.
@@ -1204,6 +1227,15 @@ impl Axes {
             }
         };
         let (yticks, ylabels) = match self.yscale {
+            _ if self.y_categories.is_some() => {
+                let (lo, hi) = (ymin.min(ymax), ymin.max(ymax));
+                self.y_categories
+                    .iter()
+                    .flatten()
+                    .filter(|(c, _)| (lo..=hi).contains(c))
+                    .map(|(c, l)| (*c, l.clone()))
+                    .unzip()
+            }
             Scale::Log => {
                 let ticks = ticker::log_ticks(ymin, ymax, ytarget);
                 let labels = ticker::format_log_ticks(&ticks);
@@ -1408,7 +1440,7 @@ impl Axes {
                         stroke: gminor.clone(),
                     });
                 }
-                for &yv in &Self::minor_ticks(ymin, ymax, &yticks, self.yscale) {
+                for &yv in &self.y_minor_ticks(ymin, ymax, &yticks) {
                     let py = t.y(yv);
                     grid.push(DrawCommand::Line {
                         p0: (box_.x, py),
@@ -1422,6 +1454,10 @@ impl Axes {
         // Data artists.
         for a in &self.artists {
             a.draw(&t, s, &mut data);
+        }
+        // Text placed by the user, above the data.
+        for note in &self.annotations {
+            note.draw(&t, s, &mut axis);
         }
 
         // Frame: all four spines (matplotlib draws the full rectangle).
@@ -1485,7 +1521,7 @@ impl Axes {
         if s.minor_ticks {
             let minorstroke = Stroke::line(fg, s.px(s.tick_major_width_pt * 0.75));
             let xmin_t = self.x_minor_ticks(xmin, xmax, &xticks);
-            let ymin_t = Self::minor_ticks(ymin, ymax, &yticks, self.yscale);
+            let ymin_t = self.y_minor_ticks(ymin, ymax, &yticks);
             for &xv in &xmin_t {
                 let px = t.x(xv);
                 if s.tick_sides.bottom {

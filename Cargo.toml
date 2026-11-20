@@ -15,6 +15,13 @@ missing_docs = "warn"
 
 [workspace.lints.clippy]
 all = "warn"
+# Casts that can lose information: fixed (`From`, `try_from`) or justified
+# where they stand. `cast_precision_loss` stays off: the integer → float casts
+# are counts and pixel sizes, exact far below 2²⁴.
+cast_possible_truncation = "warn"
+cast_sign_loss = "warn"
+cast_possible_wrap = "warn"
+cast_lossless = "warn"
 
 [workspace.dependencies]
 oxiplot-tex = { path = "crates/oxiplot-tex", version = "0.9.0" }

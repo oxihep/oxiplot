@@ -104,8 +104,8 @@ fn decade_ticks(vmin: f64, vmax: f64) -> Vec<(f64, String)> {
     if !(vmin > 0.0 && vmax > vmin) {
         return Vec::new();
     }
-    let k0 = vmin.log10().floor() as i32;
-    let k1 = vmax.log10().ceil() as i32;
+    let k0 = crate::num::floor_i32(vmin.log10());
+    let k1 = crate::num::ceil_i32(vmax.log10());
     let decades = (k1 - k0).max(1);
     let subs: &[f64] = if decades <= 2 {
         &[1.0, 2.0, 3.0, 5.0]
@@ -138,7 +138,7 @@ fn fmt_value(v: f64) -> String {
         s.to_string()
     } else {
         // e.g. 1000000 -> "1e6", 0.00001 -> "1e-5"
-        let e = a.log10().round() as i32;
+        let e = crate::num::round_i32(a.log10());
         let mant = v / 10f64.powi(e);
         if (mant - 1.0).abs() < 1e-9 {
             format!("1e{e}")

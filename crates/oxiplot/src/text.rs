@@ -28,6 +28,7 @@ pub enum FontStyle {
 
 /// Horizontal anchor of a text block relative to its draw position.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[non_exhaustive]
 pub enum HAlign {
     /// Position is the left edge.
     #[default]
@@ -40,6 +41,7 @@ pub enum HAlign {
 
 /// Vertical anchor of a text block relative to its draw position.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[non_exhaustive]
 pub enum VAlign {
     /// Position is the text baseline.
     #[default]

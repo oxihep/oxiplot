@@ -18,6 +18,7 @@ use crate::text::{self, FontStyle, HAlign, VAlign};
 /// The default is [`Corner::UpperRight`], matching ROOT. When a legend is also
 /// shown in the upper right, the stat box is stacked directly beneath it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[non_exhaustive]
 pub enum Corner {
     /// Top-right of the frame (the ROOT default).
     #[default]
@@ -153,12 +154,13 @@ fn fmt_g(v: f64, sig: usize) -> String {
         return "0".to_string();
     }
     let sig = sig.max(1);
-    let exp = v.abs().log10().floor() as i32;
+    let exp = crate::num::floor_i32(v.abs().log10());
     // %g uses scientific notation when the exponent is < -4 or >= the precision.
-    let mut s = if exp < -4 || exp >= sig as i32 {
+    let sig_i = i32::try_from(sig).unwrap_or(i32::MAX);
+    let mut s = if exp < -4 || exp >= sig_i {
         format!("{:.*e}", sig - 1, v)
     } else {
-        let decimals = (sig as i32 - 1 - exp).max(0) as usize;
+        let decimals = usize::try_from((sig_i - 1 - exp).max(0)).unwrap_or(0);
         format!("{:.*}", decimals, v)
     };
     // Strip trailing zeros like %g — in the mantissa for scientific notation

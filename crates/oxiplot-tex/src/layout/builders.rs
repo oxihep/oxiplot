@@ -252,3 +252,15 @@ pub fn color<'a, F>(layout: Layout<'a, F>, color: &nodes::Color) -> LayoutNode<'
         }),
     }
 }
+
+impl<F> std::fmt::Debug for VBox<'_, F> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("VBox").finish_non_exhaustive()
+    }
+}
+
+impl<F> std::fmt::Debug for HBox<'_, F> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("HBox").finish_non_exhaustive()
+    }
+}

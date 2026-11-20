@@ -1401,5 +1401,14 @@ fn draw_vertical_bars<F>(hbox: &mut builders::HBox<F>, n_bars: u8, rule_measurem
     }
 }
 
+impl<F> std::fmt::Debug for LayoutBuilder<'_, F> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LayoutBuilder").finish_non_exhaustive()
+    }
+}
 
-
+impl<F> std::fmt::Debug for LayoutEngine<'_, F> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LayoutEngine").finish_non_exhaustive()
+    }
+}

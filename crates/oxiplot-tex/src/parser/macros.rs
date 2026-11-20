@@ -773,3 +773,9 @@ mod tests {
         CommandCollection::parse(file).unwrap();
     }
 }
+
+impl<'a, I: Iterator<Item = TexToken<'a>>> std::fmt::Debug for ExpandedTokenIter<'a, I> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ExpandedTokenIter").finish_non_exhaustive()
+    }
+}

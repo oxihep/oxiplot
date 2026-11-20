@@ -279,3 +279,15 @@ mod tests {
         );       
     }
 }
+
+impl std::fmt::Debug for TokenIterator<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TokenIterator").finish_non_exhaustive()
+    }
+}
+
+impl std::fmt::Debug for InputProcessor<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("InputProcessor").finish_non_exhaustive()
+    }
+}

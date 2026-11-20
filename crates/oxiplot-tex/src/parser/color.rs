@@ -12,6 +12,8 @@ pub struct RGBA(pub u8, pub u8, pub u8, pub u8);
 
 
 /// Type of errors encountered while parsing the color's name
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum ColorParseError {
     /// Color does not start with # but its name is not the ASCII name of a CSS color
     UnknownColorName,

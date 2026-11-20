@@ -11,6 +11,7 @@ pub type ParseResult<T> = ::std::result::Result<T, ParseError>;
 
 /// Syntax error in the formula provided (mismatching brackets, unknown command)
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub enum ParseError {
     /// The symbol is not one we have atom type info about.
     UnrecognizedSymbol(char),

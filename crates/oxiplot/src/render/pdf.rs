@@ -34,7 +34,7 @@ struct PdfImage {
 fn num(v: f32) -> String {
     let v = if v.is_finite() { v } else { 0.0 };
     if (v - v.round()).abs() < 1e-4 {
-        format!("{}", v.round() as i64)
+        format!("{}", crate::num::round_i64(f64::from(v)))
     } else {
         let s = format!("{v:.3}");
         s.trim_end_matches('0').trim_end_matches('.').to_string()

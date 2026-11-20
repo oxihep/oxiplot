@@ -87,7 +87,7 @@ pub fn ticks(lo: f64, hi: f64, target: usize) -> Vec<f64> {
     // Each tick is `k · step`, not a running sum, so rounding does not build
     // up (100000.6, not 100000.59999999999). The loop is bounded defensively.
     for k in 0..1000 {
-        let v = (first + k as f64) * step;
+        let v = (first + f64::from(k)) * step;
         if v > hi + tol {
             break;
         }
@@ -145,14 +145,14 @@ pub fn log_ticks(lo: f64, hi: f64, target: usize) -> Vec<f64> {
     }
     let tol = 1e-9;
     let inside = |v: f64| v >= lo * (1.0 - tol) && v <= hi * (1.0 + tol);
-    let k0 = lo.log10().floor() as i32;
-    let k1 = hi.log10().ceil() as i32;
+    let k0 = crate::num::floor_i32(lo.log10());
+    let k1 = crate::num::ceil_i32(hi.log10());
     let decades: Vec<i32> = (k0..=k1).filter(|&k| inside(10f64.powi(k))).collect();
     if decades.len() >= 2 {
         let every = decades.len().div_ceil(target.max(2)).max(1);
         return decades
             .iter()
-            .filter(|&&k| k.rem_euclid(every as i32) == 0)
+            .filter(|&&k| k.rem_euclid(i32::try_from(every).unwrap_or(i32::MAX)) == 0)
             .map(|&k| 10f64.powi(k))
             .collect();
     }
@@ -180,7 +180,10 @@ pub fn log_minor_ticks(lo: f64, hi: f64) -> Vec<f64> {
     if !(lo > 0.0 && hi.is_finite()) || (hi / lo).log10() > 12.0 {
         return Vec::new();
     }
-    let (k0, k1) = (lo.log10().floor() as i32, hi.log10().ceil() as i32);
+    let (k0, k1) = (
+        crate::num::floor_i32(lo.log10()),
+        crate::num::ceil_i32(hi.log10()),
+    );
     (k0..=k1)
         .flat_map(|k| (2..10).map(move |m| f64::from(m) * 10f64.powi(k)))
         .filter(|&v| v >= lo && v <= hi)
@@ -197,7 +200,7 @@ pub fn format_log_ticks(values: &[f64]) -> Vec<String> {
         .map(|&v| {
             let k = v.log10().round();
             if (v / 10f64.powf(k) - 1.0).abs() < 1e-9 {
-                let k = k as i32;
+                let k = crate::num::round_i32(k);
                 if cfg!(feature = "math") {
                     format!("$10^{{{k}}}$")
                 } else {
@@ -219,7 +222,7 @@ fn decimals_for_step(step: f64) -> usize {
         return 1;
     }
     let d = -step.log10().floor();
-    d.clamp(0.0, 10.0) as usize
+    crate::num::to_index(d.clamp(0.0, 10.0))
 }
 
 /// Format a set of tick values (a plain `ScalarFormatter`). Uses fixed decimals
@@ -233,7 +236,7 @@ pub fn format_ticks(values: &[f64], step: f64) -> Vec<String> {
     // 1e5 … 3e5 in steps of 1e5 need none, 1.00e-5 … 1.10e-5 in steps of
     // 2e-7 need two.
     let sci_digits = if max_abs > 0.0 && step > 0.0 && step.is_finite() {
-        (max_abs.log10().floor() - step.log10().floor()).max(0.0) as usize
+        crate::num::to_index((max_abs.log10().floor() - step.log10().floor()).max(0.0))
     } else {
         0
     };
@@ -269,7 +272,7 @@ fn format_sci(v: f64, digits: usize) -> String {
     if v == 0.0 {
         return "0".to_string();
     }
-    let mut exp = v.abs().log10().floor() as i32;
+    let mut exp = crate::num::floor_i32(v.abs().log10());
     let mut mantissa = v / 10f64.powi(exp);
     // Rounding can carry the mantissa to 10 (9.996 → "10.00"): renormalize.
     if format!("{:.digits$}", mantissa.abs()).starts_with("10") {
@@ -341,7 +344,7 @@ mod tests {
         assert!(
             log_ticks(1e-10, 1e10, 6)
                 .iter()
-                .all(|v| (v.log10().round() as i32) % 4 == 0)
+                .all(|v| crate::num::round_i32(v.log10()) % 4 == 0)
         );
         // Under two decades: 1·, 2·, 5·.
         assert_eq!(log_ticks(3.0, 60.0, 6), [5.0, 10.0, 20.0, 50.0]);

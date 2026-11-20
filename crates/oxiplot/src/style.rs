@@ -5,6 +5,7 @@ use crate::fonts::FontSet;
 
 /// Tick direction (matplotlib `xtick.direction`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[non_exhaustive]
 pub enum TickDir {
     /// Ticks point outward from the axes (matplotlib default).
     #[default]
@@ -162,8 +163,8 @@ impl Style {
     #[must_use]
     pub fn figsize_px(&self) -> (u32, u32) {
         (
-            (self.figsize_in.0 * self.dpi).round() as u32,
-            (self.figsize_in.1 * self.dpi).round() as u32,
+            crate::num::round_u32(f64::from(self.figsize_in.0 * self.dpi)),
+            crate::num::round_u32(f64::from(self.figsize_in.1 * self.dpi)),
         )
     }
 
