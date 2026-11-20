@@ -18,15 +18,15 @@ Fonts (STIX Two by default, bundled) are read in pure Rust with
 
 ```toml
 [dependencies]
-oxiplot = { git = "https://github.com/oxihep/oxiplot", tag = "v0.10.0" }
+oxiplot = { git = "https://github.com/oxihep/oxiplot", tag = "v0.11.0" }
 ```
 
 ```rust
-use oxiplot::{Axes, Binned1D, Color, ErrorbarOpts, HistOpts, HistType, Points};
+use oxiplot::{Axes, Binned1D, Color, ErrorbarOpts, HistOpts, HistType, XyPoints};
 
 let edges: Vec<f64> = (0..=50).map(|i| 2.0 * i as f64).collect();
 let mc = Binned1D::from_samples(edges, &[40.0, 48.0, 50.0, 52.0, 60.0]);
-let data = Points::new(vec![50.0], vec![3.0]).unwrap().with_y_errors(vec![1.7]).unwrap();
+let data = XyPoints::new(vec![50.0], vec![3.0]).unwrap().with_y_errors(vec![1.7]).unwrap();
 
 let mut ax = Axes::new();
 ax.hist_with(&mc, HistOpts::new().histtype(HistType::Fill).label("MC"));
@@ -95,7 +95,7 @@ Physics figures, written to a temporary folder (`cargo run -p oxiplot
 
 Plotting methods take anything that implements one of three small traits:
 `Hist1dData` (1-D bins), `Hist2dData` (a 2-D grid) and `PointData` (points with
-optional error bars). `Binned1D`, `Binned2D` and `Points` implement them for
+optional error bars). `Binned1D`, `Binned2D` and `XyPoints` implement them for
 plain arrays; implement them yourself for your own types, as oxiroot does for
 `Hist1D`, `Hist2D`, `Profile1D` and `Graph`. Like
 [UHI](https://uhi.readthedocs.io) in Python, this keeps the plotting library

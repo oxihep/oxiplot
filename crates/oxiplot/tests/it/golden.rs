@@ -19,7 +19,7 @@ use std::path::PathBuf;
 
 use oxiplot::{
     Axes, Binned1D, Binned2D, Color, CurveOpts, ErrorbarOpts, Figure, Hist1dData, Hist2dOpts,
-    HistOpts, HistType, Points, SaveOpts, Scale, Style, ratio_subplots_with, subplots_grid,
+    HistOpts, HistType, SaveOpts, Scale, Style, XyPoints, ratio_subplots_with, subplots_grid,
 };
 
 /// A channel may move by this much (of 255) before a pixel counts as changed.
@@ -106,7 +106,7 @@ fn golden_histogram_with_data_and_legend() {
     let mut ax = Axes::new();
     ax.hist_with(&mc, HistOpts::new().histtype(HistType::Fill).label("MC"));
     ax.errorbar_with(
-        &Points::new(centres(&e), data.clone())
+        &XyPoints::new(centres(&e), data.clone())
             .unwrap()
             .with_y_errors(data.iter().map(|d| d.sqrt()).collect())
             .unwrap(),
@@ -159,7 +159,7 @@ fn golden_heatmaps() {
     // Small: a rectangle per bin. Large: one image.
     let (fig, mut axs) = subplots_grid(1, 2);
     axs[0].hist2d_with(&field(12), Hist2dOpts::new().label("entries"));
-    axs[1].hist2d_with(&field(100), Hist2dOpts::new().log());
+    axs[1].hist2d_with(&field(100), Hist2dOpts::new().log(true));
     axs[0].title("12 × 12");
     axs[1].title("100 × 100, log");
     check("heatmaps", &png(&fig.with_axes(axs)));

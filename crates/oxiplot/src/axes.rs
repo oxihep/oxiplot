@@ -481,7 +481,7 @@ impl Axes {
     /// let edges: Vec<f64> = (0..=20).map(|i| 0.5 * i as f64).collect();
     /// let h = Binned1D::from_samples(edges, &[2.5, 3.1, 3.3, 4.8]);
     /// let mut ax = Axes::new();
-    /// ax.hist_with(&h, HistOpts::new().histtype(HistType::Step).yerr().label("MC"));
+    /// ax.hist_with(&h, HistOpts::new().histtype(HistType::Step).yerr(true).label("MC"));
     /// ax.save("h.svg").unwrap();
     /// ```
     pub fn hist_with(&mut self, h: &impl Hist1dData, opts: HistOpts) -> &mut Self {
@@ -612,8 +612,8 @@ impl Axes {
     ///
     /// # Examples
     /// ```no_run
-    /// use oxiplot::{Axes, Points};
-    /// let g = Points::new(vec![1.0, 2.0], vec![3.0, 4.0])?
+    /// use oxiplot::{Axes, XyPoints};
+    /// let g = XyPoints::new(vec![1.0, 2.0], vec![3.0, 4.0])?
     ///     .with_x_errors(vec![0.1, 0.1])?
     ///     .with_y_errors(vec![0.2, 0.3])?;
     /// let mut ax = Axes::new();
@@ -1838,10 +1838,10 @@ impl HistOpts {
         self.histtype = t;
         self
     }
-    /// Draw `√N`/Sumw2 error bars at the bin centers.
+    /// With `on`, draw `√N`/Sumw2 error bars at the bin centers.
     #[must_use]
-    pub fn yerr(mut self) -> Self {
-        self.yerr = true;
+    pub fn yerr(mut self, on: bool) -> Self {
+        self.yerr = on;
         self
     }
     /// Set the color.
@@ -1973,10 +1973,10 @@ impl ErrorbarOpts {
         self.capsize_pt = pt;
         self
     }
-    /// Draw a connecting line through the points.
+    /// With `on`, draw a connecting line through the points.
     #[must_use]
-    pub fn line(mut self) -> Self {
-        self.line = true;
+    pub fn line(mut self, on: bool) -> Self {
+        self.line = on;
         self
     }
     /// Set the legend label.
@@ -2024,11 +2024,16 @@ impl Hist2dOpts {
         self.norm = norm;
         self
     }
-    /// Shorthand for a base-10 log color scale (`.norm(Norm::Log)`): the colorbar
-    /// gets decade ticks and non-positive bins are masked.
+    /// With `on`, a base-10 log color scale (`.norm(Norm::Log)`): the colorbar
+    /// gets decade ticks and non-positive bins are masked; with `false`, a
+    /// linear one.
     #[must_use]
-    pub fn log(self) -> Self {
-        self.norm(crate::norm::Norm::Log)
+    pub fn log(self, on: bool) -> Self {
+        self.norm(if on {
+            crate::norm::Norm::Log
+        } else {
+            crate::norm::Norm::Linear
+        })
     }
     /// Set the colorbar label.
     #[must_use]
@@ -2102,7 +2107,7 @@ impl CurveOpts {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Binned1D, Binned2D, Points};
+    use crate::{Binned1D, Binned2D, XyPoints};
 
     fn hist(edges: &[f64], values: &[f64]) -> Binned1D {
         Binned1D::new(edges.to_vec(), values.to_vec()).unwrap()
@@ -2160,7 +2165,7 @@ mod tests {
         let mut ax = Axes::new();
         ax.hist(&hist(&[0.0, 1.0, 2.0], &[0.0, 10.0]));
         ax.errorbar(
-            &Points::new(vec![0.5, 1.5], vec![0.0, 9.0])
+            &XyPoints::new(vec![0.5, 1.5], vec![0.0, 9.0])
                 .unwrap()
                 .with_y_errors(vec![1.5, 3.0])
                 .unwrap(),
@@ -2170,14 +2175,14 @@ mod tests {
         let mut ax = Axes::new();
         ax.hist_with(
             &hist(&[0.0, 1.0, 2.0], &[0.5, 10.0]),
-            HistOpts::new().yerr(),
+            HistOpts::new().yerr(true),
         );
         assert_eq!(ax.resolved_ylim().0, 0.0);
         // A negative value does take it below, error bars and all.
         let mut ax = Axes::new();
         ax.hist_with(
             &hist(&[0.0, 1.0, 2.0], &[-2.0, 10.0]),
-            HistOpts::new().yerr(),
+            HistOpts::new().yerr(true),
         );
         let lo = ax.resolved_ylim().0;
         assert!(lo < -2.0 - 2f64.sqrt(), "{lo}");
@@ -2244,7 +2249,7 @@ mod tests {
         );
         ax.plot_with(&[0.0, 1.0], &[1.0, 2.0], CurveOpts::new().label("line"))
             .unwrap();
-        ax.errorbar(&Points::new(vec![0.5], vec![1.0]).unwrap());
+        ax.errorbar(&XyPoints::new(vec![0.5], vec![1.0]).unwrap());
         let labels: Vec<String> = ax.legend_items().into_iter().map(|i| i.label).collect();
         assert_eq!(labels, ["profile", "line"]);
         let Artist::Errorbar(p) = &ax.artists[0] else {

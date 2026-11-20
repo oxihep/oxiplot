@@ -6,6 +6,24 @@ Notable changes to oxiplot and oxiplot-tex, by release. The format follows
 
 ## [Unreleased]
 
+## [0.11.0]
+
+API review toward 1.0 (breaking).
+
+### Changed
+
+- **`Points` is now `XyPoints`**: the old name collided with oxifit's fit
+  data `Points` whenever both were glob-imported (as oxiroot's prelude and
+  `oxiroot::plot` are).
+- **Toggles take a `bool`**, so they can be switched off: `FillOpts::hollow`,
+  `TextOpts::axes_coords`, `SaveOpts::transparent`, `Figure::sharex` /
+  `sharey`, `HistOpts::yerr`, `ErrorbarOpts::line` and `Hist2dOpts::log`
+  (`log(false)` is a linear color scale).
+- **`#[non_exhaustive]`** on `Style`, `GridSpec`, `Sides` and `TimeFormat`:
+  start from `Style::default()` / `Style::mplhep()` (or the constructors) and
+  set fields; struct literals no longer compile.
+- **oxifit 0.9.0** behind the `fit` feature.
+
 ## [0.10.0]
 
 Result plots for limits, template fits and MCMC chains, on oxifit 0.8.0.

@@ -18,6 +18,7 @@ pub enum TickDir {
 
 /// Which spines/ticks are drawn on each side.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct Sides {
     /// Left side.
     pub left: bool,
@@ -40,6 +41,7 @@ pub struct Sides {
 /// is set in STIX Two ([`FontSet::stix`]); [`FontSet::dejavu`] gives
 /// matplotlib's DejaVu Sans. [`Style::mplhep`] is the HEP look.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct Style {
     /// Figure size in inches `(width, height)`.
     pub figsize_in: (f32, f32),

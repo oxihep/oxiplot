@@ -11,8 +11,8 @@
 //! ```
 
 use oxiplot::{
-    Binned1D, Color, CurveOpts, ErrorbarOpts, HistOpts, HistType, Points, Scale, StackOpts, Style,
-    ratio_subplots_with,
+    Binned1D, Color, CurveOpts, ErrorbarOpts, HistOpts, HistType, Scale, StackOpts, Style,
+    XyPoints, ratio_subplots_with,
 };
 
 /// Bin edges: 25 bins of 20 GeV.
@@ -88,7 +88,7 @@ fn main() -> oxiplot::Result<()> {
             .color(Color::BLACK)
             .label("MC stat. unc."),
     );
-    let data_pts = Points::new(centres.clone(), data.clone())?
+    let data_pts = XyPoints::new(centres.clone(), data.clone())?
         .with_y_errors(data.iter().map(|d| d.sqrt()).collect())?;
     main.errorbar_with(
         &data_pts,
@@ -105,7 +105,7 @@ fn main() -> oxiplot::Result<()> {
     let r: Vec<f64> = data.iter().zip(&total).map(|(d, t)| d / t).collect();
     let r_err: Vec<f64> = data.iter().zip(&total).map(|(d, t)| d.sqrt() / t).collect();
     ratio.errorbar_with(
-        &Points::new(centres, r)?.with_y_errors(r_err)?,
+        &XyPoints::new(centres, r)?.with_y_errors(r_err)?,
         ErrorbarOpts::new().color(Color::BLACK),
     );
     ratio.function_with(

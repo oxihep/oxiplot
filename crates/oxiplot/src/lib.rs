@@ -4,7 +4,7 @@
 //! matplotlib-like API and an mplhep-style histogram look — no Python, no
 //! matplotlib, no system fonts. It draws any data that implements
 //! [`Hist1dData`], [`Hist2dData`] or [`PointData`]: plain arrays through
-//! [`Binned1D`], [`Binned2D`] and [`Points`], or the histograms and graphs of
+//! [`Binned1D`], [`Binned2D`] and [`XyPoints`], or the histograms and graphs of
 //! [oxiroot](https://github.com/oxihep/oxiroot) (its `plot` feature).
 //! Everything is drawn through one backend-independent draw IR that fans out
 //! to a tiny-skia raster (PNG), a hand-written SVG, and a hand-written PDF, so
@@ -58,11 +58,11 @@
 //! # A histogram with data points
 //!
 //! ```no_run
-//! use oxiplot::{Axes, Binned1D, Color, ErrorbarOpts, HistOpts, HistType, Points};
+//! use oxiplot::{Axes, Binned1D, Color, ErrorbarOpts, HistOpts, HistType, XyPoints};
 //!
 //! let edges: Vec<f64> = (0..=50).map(|i| 2.0 * i as f64).collect();
 //! let mc = Binned1D::from_samples(edges, &[40.0, 48.0, 50.0, 52.0, 60.0]);
-//! let data = Points::new(vec![50.0], vec![3.0])?.with_y_errors(vec![1.7])?;
+//! let data = XyPoints::new(vec![50.0], vec![3.0])?.with_y_errors(vec![1.7])?;
 //!
 //! let mut ax = Axes::new();
 //! ax.hist_with(&mc, HistOpts::new().histtype(HistType::Fill).label("MC"));
@@ -77,11 +77,11 @@
 //! # A ratio plot
 //!
 //! ```no_run
-//! use oxiplot::{ratio_subplots, Binned1D, Color, ErrorbarOpts, HistOpts, HistType, Points};
+//! use oxiplot::{ratio_subplots, Binned1D, Color, ErrorbarOpts, HistOpts, HistType, XyPoints};
 //!
 //! let edges: Vec<f64> = (0..=50).map(|i| 2.0 * i as f64).collect();
 //! let mc = Binned1D::from_samples(edges, &[40.0, 48.0, 50.0, 52.0, 60.0]);
-//! let ratio_points = Points::new(vec![50.0], vec![1.0])?.with_y_errors(vec![0.1])?;
+//! let ratio_points = XyPoints::new(vec![50.0], vec![1.0])?.with_y_errors(vec![0.1])?;
 //!
 //! let (fig, mut main, mut ratio) = ratio_subplots();
 //! main.hist_with(&mc, HistOpts::new().histtype(HistType::Fill).label("MC"));
@@ -130,7 +130,7 @@ pub use artists::{HistType, Marker, ParseHistTypeError, ParseMarkerError};
 pub use axes::{Axes, CurveOpts, ErrorbarOpts, Hist2dOpts, HistOpts, StackOpts};
 pub use cmap::{Colormap, ParseColormapError};
 pub use color::{Color, ParseColorError, TAB10};
-pub use data::{Binned1D, Binned2D, Hist1dData, Hist2dData, PointData, Points};
+pub use data::{Binned1D, Binned2D, Hist1dData, Hist2dData, PointData, XyPoints};
 pub use error::{Error, Result};
 pub use figure::{
     Figure, PdfPages, SaveOpts, ratio_subplots, ratio_subplots_with, subplots, subplots_grid,
@@ -229,7 +229,7 @@ mod tests {
     fn hist_step_and_errorbar() {
         let h = gauss_hist();
         let mut ax = Axes::new();
-        ax.hist_with(&h, HistOpts::new().yerr());
+        ax.hist_with(&h, HistOpts::new().yerr(true));
         let (w, hh) = ax.style.figsize_px();
         let groups = ax.render(w, hh);
         assert_renders(&groups, w, hh);
@@ -246,7 +246,7 @@ mod tests {
             .map(|x| 1500.0 * (-0.5 * ((x - 90.0) / 9.0).powi(2)).exp())
             .collect();
         let e: Vec<f64> = y.iter().map(|v| v.sqrt().max(10.0)).collect();
-        let g = Points::new(x.clone(), y)
+        let g = XyPoints::new(x.clone(), y)
             .unwrap()
             .with_x_errors(vec![6.0; x.len()])
             .unwrap()
@@ -678,7 +678,7 @@ mod tests {
             .map(|i| 0.5 * (edges[i] + edges[i + 1]))
             .collect();
         let ones: Vec<f64> = centers.iter().map(|_| 1.0).collect();
-        let r = Points::new(centers.clone(), ones)
+        let r = XyPoints::new(centers.clone(), ones)
             .unwrap()
             .with_y_errors(vec![0.08; centers.len()])
             .unwrap();
@@ -699,8 +699,8 @@ mod tests {
         axs[1]
             .plot(&[55.0, 90.0, 125.0], &[500.0, 1500.0, 400.0])
             .unwrap();
-        fig.sharex()
-            .sharey()
+        fig.sharex(true)
+            .sharey(true)
             .suptitle("$Z\\to\\mu\\mu$ — shared grid")
             .with_axes(axs)
             .save(format!("{dir}/shared.png"))

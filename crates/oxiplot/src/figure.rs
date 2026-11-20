@@ -18,7 +18,7 @@ use crate::style::Style;
 /// # Examples
 /// ```
 /// use oxiplot::SaveOpts;
-/// let opts = SaveOpts::new().dpi(300.0).transparent();
+/// let opts = SaveOpts::new().dpi(300.0).transparent(true);
 /// ```
 #[derive(Debug, Clone, Default)]
 pub struct SaveOpts {
@@ -40,10 +40,10 @@ impl SaveOpts {
         self.dpi = Some(dpi);
         self
     }
-    /// Render with a transparent background (no opaque page fill).
+    /// With `on`, render with a transparent background (no opaque page fill).
     #[must_use]
-    pub fn transparent(mut self) -> Self {
-        self.transparent = true;
+    pub fn transparent(mut self, on: bool) -> Self {
+        self.transparent = on;
         self
     }
 }
@@ -90,19 +90,19 @@ impl Figure {
         }
     }
 
-    /// Share the x-axis across all panels (common x range; only the bottom row
+    /// With `on`, share the x-axis across all panels (common x range; only the bottom row
     /// keeps its x tick labels and x-axis label).
     #[must_use]
-    pub fn sharex(mut self) -> Self {
-        self.sharex = true;
+    pub fn sharex(mut self, on: bool) -> Self {
+        self.sharex = on;
         self
     }
 
-    /// Share the y-axis across all panels (common y range; only the left column
+    /// With `on`, share the y-axis across all panels (common y range; only the left column
     /// keeps its y tick labels and y-axis label).
     #[must_use]
-    pub fn sharey(mut self) -> Self {
-        self.sharey = true;
+    pub fn sharey(mut self, on: bool) -> Self {
+        self.sharey = on;
         self
     }
 
@@ -712,7 +712,7 @@ mod tests {
     fn stacked_shared_panels_drop_the_label_at_each_seam() {
         let grid = GridSpec::new(3, 1).hspace(0.0);
         let (fig, axs) = subplots_grid_with(Style::default(), grid);
-        let fig = fig.sharex().with_axes(axs);
+        let fig = fig.sharex(true).with_axes(axs);
         assert!(!fig.axes[0].ylabel_prune_for_test().1);
         assert!(fig.axes[1].ylabel_prune_for_test().1);
         assert!(fig.axes[2].ylabel_prune_for_test().1);
@@ -738,7 +738,7 @@ mod tests {
         let (fig, mut main, mut ratio) = ratio_subplots();
         let e: Vec<f64> = (0..=10).map(|i| 50.0 * f64::from(i)).collect();
         main.hist(&Binned1D::new(e, vec![5.0; 10]).unwrap());
-        ratio.errorbar(&crate::Points::new(vec![25.0, 475.0], vec![1.0, 1.0]).unwrap());
+        ratio.errorbar(&crate::XyPoints::new(vec![25.0, 475.0], vec![1.0, 1.0]).unwrap());
         let fig = fig.ratio(main, ratio);
         assert_eq!(fig.axes[0].resolved_xlim(), (0.0, 500.0));
         assert_eq!(fig.axes[1].resolved_xlim(), (0.0, 500.0));

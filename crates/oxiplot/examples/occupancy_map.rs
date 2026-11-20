@@ -44,7 +44,7 @@ fn main() -> oxiplot::Result<()> {
         &map,
         Hist2dOpts::new()
             .cmap(Colormap::Viridis)
-            .log()
+            .log(true)
             .label("hits"),
     );
     ax.xlabel("$\\eta$")
