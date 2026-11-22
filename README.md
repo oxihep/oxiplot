@@ -18,7 +18,7 @@ Fonts (STIX Two by default, bundled) are read in pure Rust with
 
 ```toml
 [dependencies]
-oxiplot = { git = "https://github.com/oxihep/oxiplot", tag = "v0.11.1" }
+oxiplot = { git = "https://github.com/oxihep/oxiplot", tag = "v0.12.0" }
 ```
 
 ```rust
@@ -43,16 +43,29 @@ ax.save("pt.png").unwrap(); // or .svg / .pdf
   band), stacked (`hist_stack`) or over category bins, **graphs** and **profiles** with error bars, **2-D histograms** as
   a colour mesh with a colorbar (linear, log or symlog colour scale), and
   analytic **curves**.
+- **Histograms the way an analysis draws them**: per bin, per unit of x
+  (`per_width`) or to unit area (`density`); data with exact Poisson error
+  bars (`poisson_errors`); underflow and overflow hidden, shown or summed
+  (`flow`); a hatched uncertainty band (`hatch`).
+- **Comparisons of two histograms**, bin by bin: `XyPoints::ratio`, `pull`
+  and `difference`, and `Binned1D::relative_uncertainty` for the band
+  around one in a ratio panel.
 - **Linear or log axes** (`ax.yscale(Scale::Log)`), with decade ticks
-  labelled 10ᵏ, and **time axes**.
+  labelled 10ᵏ, **time axes**, tick positions of your own (`xticks`,
+  `yticks`), and a **second y axis** on the right (`twinx`).
 - A **legend** placed where it hides the least data, as matplotlib's
-  `loc="best"` does, or at a chosen corner (`ax.legend_loc(Loc::UpperLeft)`).
+  `loc="best"` does, or at a chosen corner (`ax.legend_loc(Loc::UpperLeft)`),
+  with a title and columns. When the data leave it no room, the y axis
+  grows to make some.
+- **Experiment styles**: `Style::cms()`, `atlas()`, `lhcb()` and `alice()`,
+  each with its label where the collaboration puts it.
 - **Multi-panel figures**: grids (`subplots_grid`, `GridSpec`) and the HEP
   ratio plot (`ratio_subplots`). The figure makes room for each panel's tick
   labels, axis labels and title, and the suptitle, so nothing overlaps, and
   lines up the y-axis labels of a column.
 - **Bands, lines and text**: `fill_between`, reference lines (`axhline`,
-  `axvline`), text in data or frame coordinates (`text`), contour lines of a
+  `axvline`), shaded and hatched spans (`axvspan`, `axhspan`), thirteen
+  markers, solid and open, text in data or frame coordinates (`text`), contour lines of a
   grid (`contour`), and category labels on the y axis (`y_categories`).
 - **Result plots**: upper limits against a mass with the expected ±1σ/±2σ
   Brazil band (`limit_band`), and with the `fit` feature, from oxifit's
@@ -84,6 +97,7 @@ Physics figures, written to a temporary folder (`cargo run -p oxiplot
 
 | Example | Shows |
 | --- | --- |
+| [`hep_features`](crates/oxiplot/examples/hep_features.rs) | The pieces of a HEP plot, one figure each: Poisson errors over a hatched band with a ratio panel, bin-width normalisation, flow bins, markers, shaded spans, a second y axis, and the four experiment styles |
 | [`data_mc_ratio`](crates/oxiplot/examples/data_mc_ratio.rs) | Data over stacked backgrounds and a signal, with an uncertainty band and a data/MC ratio panel, on a log scale |
 | [`efficiency`](crates/oxiplot/examples/efficiency.rs) | A trigger turn-on with asymmetric (Wilson) errors and the true curve |
 | [`occupancy_map`](crates/oxiplot/examples/occupancy_map.rs) | A 120 × 128 η–φ detector map on a log colour scale, drawn as one image |

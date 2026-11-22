@@ -459,8 +459,24 @@ fn all_histtypes_render() {
             .any(|p| p.len() == 2 * n + 2)
     );
 
-    // Errorbar: one marker per bin, at the bin centres, inside the frame.
-    let svg = svg_of(HistType::Errorbar);
+    // Errorbar: one marker per filled bin; an empty bin is left out.
+    let filled = oxiplot::Hist1dData::values(&h)
+        .iter()
+        .filter(|&&v| v != 0.0)
+        .count();
+    assert!(filled < n, "the tails of the test histogram are empty");
+    assert_eq!(circles(&svg_of(HistType::Errorbar)).len(), filled);
+
+    // With the empty bins asked for: one marker per bin, at the bin centres,
+    // inside the frame.
+    let mut ax = Axes::new();
+    ax.hist_with(
+        &h,
+        HistOpts::new()
+            .histtype(HistType::Errorbar)
+            .empty_bins(true),
+    );
+    let svg = ax.to_svg_string();
     let f = frames(&svg)[0];
     let markers = circles(&svg);
     assert_eq!(markers.len(), n);

@@ -97,6 +97,26 @@ pub struct Style {
     pub legend_frame: bool,
     /// Text + math fonts (default: STIX Two — a LaTeX-like serif).
     pub fonts: FontSet,
+    /// Where the experiment label ([`Axes::hep_label`](crate::Axes::hep_label))
+    /// goes.
+    pub hep_label_loc: HepLabelLoc,
+    /// The experiment name's size, as a multiple of the font size.
+    pub hep_label_scale: f32,
+    /// Whether the status after the experiment name is italic.
+    pub hep_status_italic: bool,
+}
+
+/// Where the experiment label goes: each collaboration has its own habit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[non_exhaustive]
+pub enum HepLabelLoc {
+    /// Above the frame, at its left (CMS).
+    #[default]
+    Above,
+    /// Inside the frame, top left (ATLAS, ALICE).
+    InsideLeft,
+    /// Inside the frame, top right (LHCb).
+    InsideRight,
 }
 
 impl Default for Style {
@@ -137,6 +157,9 @@ impl Default for Style {
             margins_frac: (0.135, 0.93, 0.145, 0.91),
             legend_frame: true,
             fonts: FontSet::stix(),
+            hep_label_loc: HepLabelLoc::Above,
+            hep_label_scale: 1.3,
+            hep_status_italic: true,
         }
     }
 }
@@ -200,6 +223,58 @@ impl Style {
             tick_pad_pt: 5.0,
             legend_frame: false,
             ..Style::default()
+        }
+    }
+
+    /// The CMS look: [`mplhep`](Style::mplhep) with the label above the
+    /// frame, the name in bold and the status in italics after it.
+    #[must_use]
+    pub fn cms() -> Self {
+        Style::mplhep()
+    }
+
+    /// The ATLAS look: a sans-serif face, ticks pointing in on all four
+    /// sides, and the label inside the frame at the top left with the
+    /// status upright after the name.
+    ///
+    /// The name is set in bold: the bundled fonts have no bold italic, which
+    /// is how ATLAS writes it.
+    #[must_use]
+    pub fn atlas() -> Self {
+        Style {
+            fonts: FontSet::dejavu(),
+            hep_label_loc: HepLabelLoc::InsideLeft,
+            hep_label_scale: 1.2,
+            hep_status_italic: false,
+            ..Style::mplhep()
+        }
+    }
+
+    /// The LHCb look: a serif face, heavier lines and frame, and a large
+    /// label inside the frame at the top right.
+    #[must_use]
+    pub fn lhcb() -> Self {
+        Style {
+            axes_linewidth_pt: 1.5,
+            tick_major_width_pt: 1.5,
+            line_width_pt: 2.0,
+            hep_label_loc: HepLabelLoc::InsideRight,
+            hep_label_scale: 1.8,
+            hep_status_italic: false,
+            ..Style::mplhep()
+        }
+    }
+
+    /// The ALICE look: a sans-serif face, ticks pointing in on all four
+    /// sides, and the label inside the frame at the top left.
+    #[must_use]
+    pub fn alice() -> Self {
+        Style {
+            fonts: FontSet::dejavu(),
+            hep_label_loc: HepLabelLoc::InsideLeft,
+            hep_label_scale: 1.1,
+            hep_status_italic: false,
+            ..Style::mplhep()
         }
     }
 }

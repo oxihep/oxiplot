@@ -106,6 +106,16 @@ fn marker_fromstr_display_round_trip() {
         ("o", Marker::Circle),
         ("s", Marker::Square),
         ("^", Marker::TriangleUp),
+        ("v", Marker::TriangleDown),
+        ("D", Marker::Diamond),
+        ("x", Marker::Cross),
+        ("+", Marker::Plus),
+        ("*", Marker::Star),
+        ("open o", Marker::OpenCircle),
+        ("open s", Marker::OpenSquare),
+        ("open ^", Marker::OpenTriangleUp),
+        ("open v", Marker::OpenTriangleDown),
+        ("open D", Marker::OpenDiamond),
     ] {
         assert_eq!(s.parse::<Marker>().unwrap(), m);
         assert_eq!(m.to_string(), s);
@@ -113,7 +123,7 @@ fn marker_fromstr_display_round_trip() {
     }
     assert_eq!("".parse::<Marker>().unwrap(), Marker::None);
     assert_eq!(Marker::default(), Marker::None);
-    assert!("x".parse::<Marker>().is_err());
+    assert!("?".parse::<Marker>().is_err());
 }
 
 #[test]

@@ -6,6 +6,71 @@ Notable changes to oxiplot and oxiplot-tex, by release. The format follows
 
 ## [Unreleased]
 
+## [0.12.0]
+
+What a HEP plot is made of, and four defects found by looking at every
+figure oxiroot's examples draw. Three changes alter existing output; see
+**Changed**.
+
+### Added
+
+- **Histogram normalisation**: `HistOpts::per_width(true)` divides each bin
+  by its width, and `density(true)` normalises to unit area. Errors scale
+  with the values.
+- **Poisson error bars**: `HistOpts::poisson_errors(true)` draws each bin
+  that holds a count with its exact (Garwood) 68.27 % interval, the
+  asymmetric error bar of data. A weighted bin keeps its own error.
+- **Flow bins**: `HistOpts::flow(Flow::Show | Flow::Sum)` draws the
+  underflow and overflow beside the axis or adds them to the end bins.
+  `Hist1dData` gains `underflow()` and `overflow()`, `None` by default.
+- **Hatching**: `Hatch::{Diagonal, BackDiagonal, Cross}` on a histogram
+  band or fill (`HistOpts::hatch`) and on a span (`FillOpts::hatch`). A
+  hatched band is lines with no fill behind them, the usual statistical
+  uncertainty band, and its legend sample is hatched too.
+- **Shaded spans**: `Axes::axvspan`, `axhspan` and their `_with` forms: a
+  signal region, a blinded window. They do not widen the limits.
+- **Comparing two histograms**: `XyPoints::ratio`, `pull` and `difference`
+  give the points of a lower panel, and `Binned1D::relative_uncertainty`
+  the denominator's band around one. Histograms of different binnings are
+  refused.
+- **Markers**: `TriangleDown`, `Diamond`, `Cross`, `Plus`, `Star`, and the
+  open `OpenCircle`, `OpenSquare`, `OpenTriangleUp`, `OpenTriangleDown` and
+  `OpenDiamond`. `HistOpts::marker` sets an errorbar histogram's.
+- **A second y axis**: `Axes::twinx()` returns an axis on the right of the
+  frame that shares its x axis, with its own scale, ticks and label. Its
+  legend entries join the frame's legend.
+- **Tick positions**: `Axes::xticks` and `yticks`.
+- **Legend layout**: `Axes::legend_title` and `legend_ncol`.
+- **Experiment styles**: `Style::cms()`, `atlas()`, `lhcb()` and `alice()`.
+  `Style::hep_label_loc` (`HepLabelLoc::{Above, InsideLeft, InsideRight}`)
+  places the label; a label inside the frame is kept clear of the data and
+  of the legend.
+- The `hep_features` example draws each of these.
+
+### Changed
+
+- **More tick labels.** The tick step is the smallest "nice" one that fits
+  the number of ticks the frame has room for, where the range was first
+  rounded up to a nice number, which could leave an axis with two labels
+  (`0` and `1` over −0.55 to 1.55; now five).
+- **An errorbar histogram leaves its empty bins out**, as ROOT leaves them
+  out of a data histogram. `HistOpts::empty_bins(true)` draws them, and with
+  Poisson errors each then shows the upper limit of zero events.
+- **The fit-statistics box rounds a parameter to its uncertainty**:
+  `90.991 ± 0.038` where it printed `90.99 ± 0.03774`. The uncertainty
+  keeps two significant figures. `StatBox::sig_figs` gives every number a
+  fixed count again.
+
+### Fixed
+
+- **A legend could cover the data** when no spot was clear. With an
+  autoscaled linear y axis, the top of the range now rises (by up to 60 %)
+  until a spot is, as mplhep's `yscale_legend` does. A range set with
+  `ylim` is kept.
+- **A histogram of small values got an axis far too tall**: the margin
+  above the tallest bin was at least 0.05 in data units, so a density
+  peaking at 0.02 was drawn on an axis up to 0.07.
+
 ## [0.11.1]
 
 ### Fixed

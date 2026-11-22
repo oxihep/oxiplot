@@ -24,6 +24,7 @@ pub struct FillOpts {
     pub(crate) edge: Option<(Color, f32)>,
     pub(crate) no_face: bool,
     pub(crate) label: Option<String>,
+    pub(crate) hatch: Option<crate::artists::Hatch>,
 }
 
 impl FillOpts {
@@ -61,6 +62,14 @@ impl FillOpts {
     #[must_use]
     pub fn label(mut self, s: impl Into<String>) -> Self {
         self.label = Some(s.into());
+        self
+    }
+    /// Hatch the region in its colour. Only a span
+    /// ([`axvspan_with`](crate::Axes::axvspan_with),
+    /// [`axhspan_with`](crate::Axes::axhspan_with)) draws it.
+    #[must_use]
+    pub fn hatch(mut self, hatch: crate::artists::Hatch) -> Self {
+        self.hatch = Some(hatch);
         self
     }
 }
@@ -365,6 +374,56 @@ impl Axes {
             label: opts.label,
         }));
         self
+    }
+
+    fn span(&mut self, horizontal: bool, lo: f64, hi: f64, opts: FillOpts) -> &mut Self {
+        let color = opts.color.unwrap_or(Color::rgb(128, 128, 128));
+        let face = (!opts.no_face).then(|| color.with_alpha(opts.alpha.unwrap_or(0.2)));
+        self.add_artist(Artist::Span(crate::artists::SpanArtist {
+            horizontal,
+            lo,
+            hi,
+            face,
+            edge: opts.edge,
+            hatch: opts.hatch.map(|h| (h, color)),
+            label: opts.label,
+        }));
+        self
+    }
+
+    /// Shade the frame over a range of x values in translucent gray
+    /// (matplotlib's `axvspan`): a signal region, a blinded window. It does
+    /// not widen the limits.
+    pub fn axvspan(&mut self, range: std::ops::Range<f64>) -> &mut Self {
+        self.span(false, range.start, range.end, FillOpts::new())
+    }
+
+    /// [`axvspan`](Self::axvspan) with a colour, opacity, edge, hatch and
+    /// legend label.
+    ///
+    /// ```
+    /// use oxiplot::{Axes, Color, FillOpts, Hatch};
+    /// let mut ax = Axes::new();
+    /// ax.plot(&[100.0, 160.0], &[9.0, 2.0])?;
+    /// ax.axvspan_with(
+    ///     120.0..130.0,
+    ///     FillOpts::new().hollow(true).color(Color::BLACK).hatch(Hatch::Diagonal).label("blinded"),
+    /// );
+    /// # Ok::<(), oxiplot::Error>(())
+    /// ```
+    pub fn axvspan_with(&mut self, range: std::ops::Range<f64>, opts: FillOpts) -> &mut Self {
+        self.span(false, range.start, range.end, opts)
+    }
+
+    /// Shade the frame over a range of y values (matplotlib's `axhspan`): a
+    /// ±1σ strip in a pull or ratio panel.
+    pub fn axhspan(&mut self, range: std::ops::Range<f64>) -> &mut Self {
+        self.span(true, range.start, range.end, FillOpts::new())
+    }
+
+    /// [`axhspan`](Self::axhspan) with options.
+    pub fn axhspan_with(&mut self, range: std::ops::Range<f64>, opts: FillOpts) -> &mut Self {
+        self.span(true, range.start, range.end, opts)
     }
 
     /// A gray horizontal line across the frame at `y` (it does not widen

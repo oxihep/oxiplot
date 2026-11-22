@@ -4,7 +4,7 @@
 use std::ops::Range;
 
 use crate::artists::{
-    Artist, ErrorbarArtist, HistType, LineArtist, Marker, MeshArtist, StepArtist,
+    Artist, ErrorbarArtist, Hatch, HistType, LineArtist, Marker, MeshArtist, StepArtist,
 };
 use crate::cmap::Colormap;
 use crate::color::Color;
@@ -13,7 +13,7 @@ use crate::data::{Hist1dData, Hist2dData, PointData};
 use crate::draw::{DrawCommand, DrawGroup, Rect, Stroke};
 use crate::figure::SaveOpts;
 use crate::legend::Loc;
-use crate::style::{Style, TickDir};
+use crate::style::{HepLabelLoc, Style, TickDir};
 use crate::text::{self, FontStyle, HAlign, VAlign};
 use crate::ticker;
 use crate::timeaxis::TimeFormat;
@@ -42,12 +42,12 @@ pub(crate) struct Insets {
 }
 
 /// Major tick positions and labels for one frame.
-struct TickLayout {
-    limits: (f64, f64, f64, f64),
-    xticks: Vec<f64>,
-    yticks: Vec<f64>,
-    xlabels: Vec<String>,
-    ylabels: Vec<String>,
+pub(crate) struct TickLayout {
+    pub(crate) limits: (f64, f64, f64, f64),
+    pub(crate) xticks: Vec<f64>,
+    pub(crate) yticks: Vec<f64>,
+    pub(crate) xlabels: Vec<String>,
+    pub(crate) ylabels: Vec<String>,
 }
 
 /// A single plot panel.
@@ -89,6 +89,10 @@ pub struct Axes {
     pub(crate) ytick_area: Option<f32>,
     /// Where the legend goes.
     legend_loc: Loc,
+    /// A heading above the legend's entries.
+    legend_title: Option<String>,
+    /// The number of columns the legend's entries are laid out in.
+    legend_ncol: usize,
     /// Category labels at the bin centres, when the x axis is categorical
     /// (adopted from plotted data that names its bins).
     x_categories: Option<Vec<(f64, String)>>,
@@ -105,6 +109,13 @@ pub struct Axes {
     /// When set, the x values are times and its labels are drawn as dates and
     /// clock times (`Axes::x_time_format`, or a plotted time axis).
     x_time: Option<TimeFormat>,
+    /// Major tick positions set by the caller (`xticks`/`yticks`), in place
+    /// of the automatic ones.
+    xticks: Option<Vec<f64>>,
+    yticks: Option<Vec<f64>>,
+    /// A second y axis on the right of this frame, sharing its x axis
+    /// ([`Axes::twinx`]).
+    twin: Option<Box<Axes>>,
 }
 
 impl Axes {
@@ -127,6 +138,9 @@ impl Axes {
             show_legend: false,
             y_from_zero: false,
             x_time: None,
+            xticks: None,
+            yticks: None,
+            twin: None,
             colorbar: None,
             grid_minor: false,
             show_xticklabels: true,
@@ -134,6 +148,8 @@ impl Axes {
             ylabel_prune: (false, false),
             ytick_area: None,
             legend_loc: Loc::Best,
+            legend_title: None,
+            legend_ncol: 1,
             x_categories: None,
             y_categories: None,
             annotations: Vec::new(),
@@ -176,7 +192,13 @@ impl Axes {
     }
 
     pub(crate) fn legend_items(&self) -> Vec<crate::artists::LegendItem> {
-        self.artists.iter().filter_map(Artist::legend).collect()
+        // One legend for the frame: the second y axis's entries follow.
+        let twin = self.twin.iter().flat_map(|t| &t.artists);
+        self.artists
+            .iter()
+            .chain(twin)
+            .filter_map(Artist::legend)
+            .collect()
     }
 
     /// Set the x-axis label (supports `$…$` math).
@@ -258,6 +280,83 @@ impl Axes {
         self
     }
 
+    /// A second y axis on the right of this frame, sharing its x axis
+    /// (matplotlib's `twinx`): a quantity on another scale over the same x,
+    /// such as a cumulative fraction over a spectrum. Plot on what this
+    /// returns, and give it its own `ylabel`, `ylim` and `yscale`.
+    ///
+    /// Its colours carry on from this axes' cycle, and its legend entries
+    /// join this axes' legend. Its x settings are not used.
+    ///
+    /// ```
+    /// use oxiplot::Axes;
+    /// let mut ax = Axes::new();
+    /// ax.plot(&[0.0, 1.0, 2.0], &[10.0, 40.0, 20.0])?;
+    /// ax.ylabel("Events");
+    /// let right = ax.twinx();
+    /// right.plot(&[0.0, 1.0, 2.0], &[0.14, 0.71, 1.0])?;
+    /// right.ylabel("Cumulative fraction");
+    /// # Ok::<(), oxiplot::Error>(())
+    /// ```
+    pub fn twinx(&mut self) -> &mut Axes {
+        let (style, color_idx) = (self.style.clone(), self.color_idx);
+        self.twin.get_or_insert_with(|| {
+            let mut twin = Axes::with_style(style);
+            twin.color_idx = color_idx;
+            Box::new(twin)
+        })
+    }
+
+    /// The second y axis's limits on this frame: this axes' x range, its own
+    /// y range.
+    fn twin_limits(&self, twin: &Axes) -> (f64, f64, f64, f64) {
+        let (xmin, xmax, _, _) = self.limits();
+        let (_, _, ymin, ymax) = twin.limits();
+        (xmin, xmax, ymin, ymax)
+    }
+
+    /// The second y axis's major ticks and their labels on a frame at
+    /// `box_`.
+    fn twin_ticks(twin: &Axes, box_: Rect) -> (Vec<f64>, Vec<String>) {
+        let layout = twin.tick_layout(box_);
+        (layout.yticks, layout.ylabels)
+    }
+
+    /// The width taken right of the frame by the second y axis: its tick
+    /// labels and its label. 0 with no second axis.
+    fn twin_area(&self, box_: Rect) -> f32 {
+        let Some(twin) = &self.twin else {
+            return 0.0;
+        };
+        let s = &self.style;
+        let (out_len, _) = self.tick_lengths();
+        let (_, labels) = Self::twin_ticks(twin, box_);
+        let widest = labels
+            .iter()
+            .map(|l| self.tick_label_width(l))
+            .fold(0.0_f32, f32::max);
+        let mut area = out_len + s.px(s.tick_pad_pt) + widest;
+        if let Some(yl) = &twin.ylabel {
+            let (_, a, d) = crate::mathtext::label_extents(&s.fonts, yl, s.px(s.label_size_pt));
+            area += s.px(AXIS_LABEL_PAD_PT) + a + d;
+        }
+        area
+    }
+
+    /// Put the major x ticks at `positions`, in place of the automatic ones
+    /// (positions outside the axis are not drawn). A log, time or category
+    /// axis keeps its own ticks.
+    pub fn xticks(&mut self, positions: &[f64]) -> &mut Self {
+        self.xticks = Some(positions.to_vec());
+        self
+    }
+
+    /// Put the major y ticks at `positions`; see [`xticks`](Axes::xticks).
+    pub fn yticks(&mut self, positions: &[f64]) -> &mut Self {
+        self.yticks = Some(positions.to_vec());
+        self
+    }
+
     /// Enable the legend, placed where it covers the least data
     /// ([`Loc::Best`], matplotlib's default).
     pub fn legend(&mut self) -> &mut Self {
@@ -272,9 +371,33 @@ impl Axes {
         self
     }
 
+    /// Put a heading above the legend's entries (matplotlib's
+    /// `legend(title=…)`): the selection, the sample, the channel.
+    pub fn legend_title(&mut self, title: impl Into<String>) -> &mut Self {
+        self.legend_title = Some(title.into());
+        self
+    }
+
+    /// Lay the legend's entries out in `n` columns, filled top to bottom
+    /// (matplotlib's `legend(ncols=…)`).
+    pub fn legend_ncol(&mut self, n: usize) -> &mut Self {
+        self.legend_ncol = n.max(1);
+        self
+    }
+
     /// Where the legend goes.
     pub(crate) fn legend_location(&self) -> Loc {
         self.legend_loc
+    }
+
+    /// The legend's heading, if it has one.
+    pub(crate) fn legend_heading(&self) -> Option<&str> {
+        self.legend_title.as_deref()
+    }
+
+    /// The number of columns of the legend.
+    pub(crate) fn legend_columns(&self) -> usize {
+        self.legend_ncol
     }
 
     /// Every artist's sample points in pixels on a frame at `box_`: what
@@ -285,11 +408,24 @@ impl Axes {
     }
 
     pub(crate) fn data_points_px(&self, box_: Rect) -> Vec<(f32, f32)> {
-        let t = self.transform(box_, self.limits());
-        self.artists
+        self.points_px(box_, self.limits())
+    }
+
+    /// As [`data_points_px`](Self::data_points_px), for the given limits.
+    fn points_px(&self, box_: Rect, limits: (f64, f64, f64, f64)) -> Vec<(f32, f32)> {
+        let t = self.transform(box_, limits);
+        let mut pts: Vec<(f32, f32)> = self
+            .artists
             .iter()
             .flat_map(|a| a.sample_points(&t))
-            .collect()
+            .collect();
+        // What is drawn on the second y axis is data on this frame too.
+        if let Some(twin) = &self.twin {
+            let (_, _, ymin, ymax) = twin.limits();
+            let tt = twin.transform(box_, (limits.0, limits.1, ymin, ymax));
+            pts.extend(twin.artists.iter().flat_map(|a| a.sample_points(&tt)));
+        }
+        pts
     }
 
     /// Show a matplotlib-style grid at the major tick positions (light grey
@@ -493,17 +629,73 @@ impl Axes {
         self.adopt_time_format(h.x_time_format());
         let edges = h.edges();
         self.adopt_categories(&edges, h.x_labels());
-        let values = h.values();
+        let mut edges = edges;
+        let mut values = h.values();
+        let mut errors: Vec<f64> = (0..values.len()).map(|i| h.error(i)).collect();
+        // The flow bins: added to the bins at the ends, or drawn beside them
+        // as bins of their neighbour's width.
+        if values.len() + 1 == edges.len() && !values.is_empty() {
+            let last = values.len() - 1;
+            match opts.flow {
+                Flow::Hide => {}
+                Flow::Sum => {
+                    if let Some((v, e)) = h.underflow() {
+                        values[0] += v;
+                        errors[0] = errors[0].hypot(e);
+                    }
+                    if let Some((v, e)) = h.overflow() {
+                        values[last] += v;
+                        errors[last] = errors[last].hypot(e);
+                    }
+                }
+                Flow::Show => {
+                    if let Some((v, e)) = h.overflow() {
+                        edges.push(edges[last + 1] + (edges[last + 1] - edges[last]));
+                        values.push(v);
+                        errors.push(e);
+                    }
+                    if let Some((v, e)) = h.underflow() {
+                        edges.insert(0, edges[0] - (edges[1] - edges[0]));
+                        values.insert(0, v);
+                        errors.insert(0, e);
+                    }
+                }
+            }
+        }
         let n = values.len();
         let color = opts.color.unwrap_or_else(|| self.next_color());
         // A band *is* the uncertainty, and an errorbar histogram is data
         // points with their errors (mplhep draws both from `yerr` by default).
         let with_errors = opts.yerr || matches!(opts.histtype, HistType::Band | HistType::Errorbar);
-        let errs = if with_errors {
-            Some((0..n).map(|i| h.error(i)).collect())
-        } else {
-            None
-        };
+        // Each bin's (low, high) error: the exact Poisson interval of a
+        // count when asked for, the data's own error otherwise.
+        let mut errs: Vec<(f64, f64)> = values
+            .iter()
+            .zip(&errors)
+            .map(|(&v, &e)| {
+                if opts.poisson && crate::stats::is_count(v) {
+                    let (lo, hi) = crate::stats::poisson_interval(v);
+                    (v - lo, hi - v)
+                } else {
+                    (e, e)
+                }
+            })
+            .collect();
+        // Normalisation scales a bin and its errors alike: by its width, and
+        // for a density by the total as well.
+        if opts.density || opts.per_width {
+            let total: f64 = values.iter().copied().filter(|v| v.is_finite()).sum();
+            for i in 0..n.min(edges.len().saturating_sub(1)) {
+                let width = edges[i + 1] - edges[i];
+                let mut scale = if width > 0.0 { 1.0 / width } else { 0.0 };
+                if opts.density {
+                    scale = if total != 0.0 { scale / total } else { 0.0 };
+                }
+                values[i] *= scale;
+                errs[i] = (errs[i].0 * scale, errs[i].1 * scale);
+            }
+        }
+        let errs = with_errors.then_some(errs);
         if n > 0 && edges.len() > n {
             self.data_xlim = Some(union_range(self.data_xlim, (edges[0], edges[n])));
         }
@@ -514,11 +706,13 @@ impl Axes {
             edges,
             values,
             errs,
+            empty_bins: opts.empty_bins,
+            hatch: opts.hatch,
             histtype: opts.histtype,
             color,
             fill_color: opts.fill_color,
             width_pt: width,
-            marker: Marker::Circle,
+            marker: opts.marker.unwrap_or(Marker::Circle),
             marker_size_pt: msize,
             label: opts.label,
         }));
@@ -1081,12 +1275,78 @@ impl Axes {
     /// Resolve the data limits: the caller's limits first, then the data's
     /// own (a histogram's outer edges), then a padded autoscale over every
     /// artist. Always finite with a nonzero span, whatever the data.
+    /// The axis limits: the data's, with room made above the data for a
+    /// legend that would otherwise cover it.
+    ///
+    /// A legend placed automatically takes the spot covering the fewest data
+    /// points. When every spot covers some and the y range is the
+    /// autoscaled one, the top of the range is raised step by step (up to
+    /// 1.6 times) until a spot is clear, as mplhep's `yscale_legend` does.
+    /// An experiment label inside the frame is given room the same way.
+    /// The frame is taken at the style's own figure size.
     fn limits(&self) -> (f64, f64, f64, f64) {
-        let auto = self
+        let base = self.base_limits();
+        let autoscaled = self.ylim.is_none()
+            && self.data_ylim.is_none()
+            && self.yscale == Scale::Linear
+            && self.y_categories.is_none();
+        let for_legend = self.show_legend && self.legend_loc == Loc::Best;
+        let (w, h) = self.style.figsize_px();
+        let frame = Rect::new(0.0, 0.0, w as f32 * 0.775, h as f32 * 0.77);
+        // An experiment label inside the frame needs the same: no data
+        // under it.
+        // (With a margin of half a line around it: a marker or an error bar
+        // is wider than the point it stands for.)
+        let label = self.hep_label_inside_px(frame).map(|r| {
+            let m = 0.5 * self.style.px(self.style.font_size_pt);
+            Rect::new(r.x - m, r.y - m, r.w + 2.0 * m, r.h + 2.0 * m)
+        });
+        if !autoscaled || (!for_legend && label.is_none()) {
+            return base;
+        }
+        let (x0, x1, y0, y1) = base;
+        for step in 0..=12_u8 {
+            let top = y0 + (y1 - y0) * (1.0 + 0.05 * f64::from(step));
+            let limits = (x0, x1, y0, top);
+            let pts = self.points_px(frame, limits);
+            let under_label = label.is_some_and(|r| {
+                pts.iter()
+                    .any(|&(x, y)| x >= r.x && x <= r.right() && y >= r.y && y <= r.bottom())
+            });
+            let under_legend = for_legend
+                && crate::legend::least_covered(self, frame, &pts).is_some_and(|n| n > 0);
+            if !under_label && !under_legend {
+                return limits;
+            }
+        }
+        base
+    }
+
+    /// The limits the data and the caller ask for, before any room is made
+    /// for a legend.
+    fn base_limits(&self) -> (f64, f64, f64, f64) {
+        let mut auto = self
             .artists
             .iter()
             .filter_map(Artist::bounds)
             .reduce(Bounds::union);
+        // The second y axis shares this x axis: its data widens the x range
+        // (and nothing else; its y values are on another scale).
+        for b in self
+            .twin
+            .iter()
+            .flat_map(|t| &t.artists)
+            .filter_map(Artist::bounds)
+        {
+            auto = Some(match auto {
+                Some(a) => {
+                    let mut wider = a.union(Bounds::new(b.xmin, b.xmax, a.ymin, a.ymax));
+                    wider.xpos = wider.xpos.min(b.xpos);
+                    wider
+                }
+                None => b,
+            });
+        }
         let m = f64::from(self.style.margin);
 
         let (xmin, xmax) = match self.xscale {
@@ -1121,7 +1381,11 @@ impl Axes {
                         .any(|v| v < 0.0);
                     let lo = if negative { b.ymin.min(0.0) } else { 0.0 };
                     let (lo, hi) = (lo, b.ymax.max(0.0));
-                    let pad = (hi - lo).max(1.0) * m;
+                    // A margin of the range itself, however small its values
+                    // (a density is far below 1); an empty histogram gets
+                    // the unit range.
+                    let span = if hi > lo { hi - lo } else { 1.0 };
+                    let pad = span * m;
                     (
                         if lo < 0.0 { lo - pad } else { 0.0 },
                         if hi > 0.0 || lo == 0.0 { hi + pad } else { 0.0 },
@@ -1199,7 +1463,7 @@ impl Axes {
 
     /// The tick positions and labels on a frame at `box_` (their number
     /// follows the frame's size).
-    fn tick_layout(&self, box_: Rect) -> TickLayout {
+    pub(crate) fn tick_layout(&self, box_: Rect) -> TickLayout {
         let (xmin, xmax, ymin, ymax) = self.limits();
         let xtarget = crate::num::to_index(f64::from((box_.w / 70.0).round())).clamp(3, 11);
         let ytarget = crate::num::to_index(f64::from((box_.h / 50.0).round())).clamp(3, 9);
@@ -1225,11 +1489,15 @@ impl Axes {
                 let labels = ticker::format_log_ticks(&ticks);
                 (ticks, labels)
             }
-            (None, _) => {
-                let ticks = ticker::ticks(xmin, xmax, xtarget);
-                let labels = ticker::format_ticks(&ticks, ticker::nice_step(xmin, xmax, xtarget));
-                (ticks, labels)
-            }
+            (None, _) => match &self.xticks {
+                Some(ticks) => fixed_ticks(ticks, xmin, xmax),
+                None => {
+                    let ticks = ticker::ticks(xmin, xmax, xtarget);
+                    let labels =
+                        ticker::format_ticks(&ticks, ticker::nice_step(xmin, xmax, xtarget));
+                    (ticks, labels)
+                }
+            },
         };
         let (yticks, ylabels) = match self.yscale {
             _ if self.y_categories.is_some() => {
@@ -1246,11 +1514,15 @@ impl Axes {
                 let labels = ticker::format_log_ticks(&ticks);
                 (ticks, labels)
             }
-            _ => {
-                let ticks = ticker::ticks(ymin, ymax, ytarget);
-                let labels = ticker::format_ticks(&ticks, ticker::nice_step(ymin, ymax, ytarget));
-                (ticks, labels)
-            }
+            _ => match &self.yticks {
+                Some(ticks) => fixed_ticks(ticks, ymin, ymax),
+                None => {
+                    let ticks = ticker::ticks(ymin, ymax, ytarget);
+                    let labels =
+                        ticker::format_ticks(&ticks, ticker::nice_step(ymin, ymax, ytarget));
+                    (ticks, labels)
+                }
+            },
         };
         TickLayout {
             limits: (xmin, xmax, ymin, ymax),
@@ -1287,14 +1559,47 @@ impl Axes {
         }
     }
 
+    /// Where the experiment label goes on a frame at `box_`: the rectangle
+    /// its name and status take, from the top of the name's ascent. `None`
+    /// with no label.
+    pub(crate) fn hep_label_rect(&self, box_: Rect) -> Option<Rect> {
+        let (exp, status) = self.hep_label.as_ref()?;
+        let s = &self.style;
+        let base = s.px(s.font_size_pt);
+        let exp_m = text::measure(&s.fonts, exp, base * s.hep_label_scale, FontStyle::Bold);
+        let status_w = if status.is_empty() {
+            0.0
+        } else {
+            base * 0.4 + text::measure(&s.fonts, status, base * 1.05, FontStyle::Regular).width
+        };
+        let width = exp_m.width + status_w;
+        // Inside the frame the label keeps clear of the ticks pointing in.
+        let inset = s.px(s.tick_major_len_pt) + base * 0.6;
+        let (x, top) = match s.hep_label_loc {
+            HepLabelLoc::Above => (box_.x, box_.y - s.px(HEP_LABEL_PAD_PT) - exp_m.ascent),
+            HepLabelLoc::InsideLeft => (box_.x + inset, box_.y + inset),
+            HepLabelLoc::InsideRight => (box_.right() - inset - width, box_.y + inset),
+        };
+        Some(Rect::new(x, top, width, exp_m.ascent))
+    }
+
+    /// The experiment label's rectangle when it sits inside the frame: what
+    /// a legend placed automatically keeps off.
+    pub(crate) fn hep_label_inside_px(&self, box_: Rect) -> Option<Rect> {
+        (self.style.hep_label_loc != HepLabelLoc::Above)
+            .then(|| self.hep_label_rect(box_))
+            .flatten()
+    }
+
     /// The height of the experiment-label row above the frame (`hep_label`,
     /// `hep_rhs`), or 0 when there is none.
     fn hep_row_height(&self) -> f32 {
         let s = &self.style;
         let base = s.px(s.font_size_pt);
         let mut ascent = 0.0_f32;
-        if let Some((exp, _)) = &self.hep_label {
-            ascent = text::measure(&s.fonts, exp, base * 1.3, FontStyle::Bold).ascent;
+        // A label inside the frame takes no row above it.
+        if let (Some((exp, _)), HepLabelLoc::Above) = (&self.hep_label, s.hep_label_loc) {
+            ascent = text::measure(&s.fonts, exp, base * s.hep_label_scale, FontStyle::Bold).ascent;
         }
         if let Some(rhs) = &self.hep_rhs {
             ascent = ascent.max(crate::mathtext::label_extents(&s.fonts, rhs, base).1);
@@ -1364,6 +1669,7 @@ impl Axes {
             let (_, a, d) = crate::mathtext::label_extents(&s.fonts, tt, s.px(s.title_size_pt));
             s.px(TITLE_PAD_PT) + a + d
         });
+        let right = right.max(self.twin_area(frame));
         Insets {
             left,
             right,
@@ -1460,6 +1766,18 @@ impl Axes {
         for a in &self.artists {
             a.draw(&t, s, &mut data);
         }
+        // The second y axis: its artists on its own scale, then its ticks,
+        // tick labels and label on the right of the frame.
+        let twin_ticks = self.twin.as_deref().map(|twin| {
+            let limits = self.twin_limits(twin);
+            let tt = twin.transform(box_, limits);
+            for a in &twin.artists {
+                a.draw(&tt, s, &mut data);
+            }
+            let (ticks, labels) = Self::twin_ticks(twin, box_);
+            let minors = twin.y_minor_ticks(limits.2, limits.3, &ticks);
+            (tt, ticks, labels, minors)
+        });
         // Text placed by the user, above the data.
         for note in &self.annotations {
             note.draw(&t, s, &mut axis);
@@ -1513,7 +1831,17 @@ impl Axes {
                     stroke: tickstroke.clone(),
                 });
             }
-            if s.tick_sides.right {
+            if s.tick_sides.right && twin_ticks.is_none() {
+                axis.push(DrawCommand::Line {
+                    p0: (box_.right() - in_len, py),
+                    p1: (box_.right() + out_len, py),
+                    stroke: tickstroke.clone(),
+                });
+            }
+        }
+        if let Some((tt, ticks, _, _)) = &twin_ticks {
+            for &yv in ticks {
+                let py = tt.y(yv);
                 axis.push(DrawCommand::Line {
                     p0: (box_.right() - in_len, py),
                     p1: (box_.right() + out_len, py),
@@ -1553,7 +1881,17 @@ impl Axes {
                         stroke: minorstroke.clone(),
                     });
                 }
-                if s.tick_sides.right {
+                if s.tick_sides.right && twin_ticks.is_none() {
+                    axis.push(DrawCommand::Line {
+                        p0: (box_.right() - in_minor, py),
+                        p1: (box_.right() + out_minor, py),
+                        stroke: minorstroke.clone(),
+                    });
+                }
+            }
+            if let Some((tt, _, _, minors)) = &twin_ticks {
+                for &yv in minors {
+                    let py = tt.y(yv);
                     axis.push(DrawCommand::Line {
                         p0: (box_.right() - in_minor, py),
                         p1: (box_.right() + out_minor, py),
@@ -1606,6 +1944,42 @@ impl Axes {
                     HAlign::Right,
                     VAlign::Middle,
                     0.0,
+                );
+            }
+        }
+
+        // The second y axis's tick labels, right of the right spine, and its
+        // label beyond them, reading upwards like the left one.
+        if let (Some(twin), Some((tt, ticks, labels, _))) = (self.twin.as_deref(), &twin_ticks) {
+            let x = box_.right() + out_len.max(0.0) + pad;
+            let mut widest = 0.0_f32;
+            for (&yv, lab) in ticks.iter().zip(labels) {
+                widest = widest.max(self.tick_label_width(lab));
+                crate::mathtext::layout_label(
+                    &mut axis,
+                    &s.fonts,
+                    lab,
+                    x,
+                    tt.y(yv),
+                    tlab,
+                    fg,
+                    HAlign::Left,
+                    VAlign::Middle,
+                    0.0,
+                );
+            }
+            if let Some(yl) = &twin.ylabel {
+                crate::mathtext::layout_label(
+                    &mut axis,
+                    &s.fonts,
+                    yl,
+                    x + widest + s.px(AXIS_LABEL_PAD_PT),
+                    box_.y + box_.h / 2.0,
+                    s.px(s.label_size_pt),
+                    fg,
+                    HAlign::Center,
+                    VAlign::Top,
+                    -90.0,
                 );
             }
         }
@@ -1668,15 +2042,20 @@ impl Axes {
 
         // mplhep experiment label: a bold experiment name + italic status above
         // the top-left of the frame, the luminosity / energy above the top-right.
-        if let Some((exp, status)) = &self.hep_label {
+        if let (Some((exp, status)), Some(at)) = (&self.hep_label, self.hep_label_rect(box_)) {
             let base = s.px(s.font_size_pt);
-            let baseline = box_.y - s.px(HEP_LABEL_PAD_PT);
-            let exp_size = base * 1.3;
-            let exp_w = text::measure(&s.fonts, exp, exp_size, FontStyle::Bold).width;
+            let exp_size = base * s.hep_label_scale;
+            let exp_m = text::measure(&s.fonts, exp, exp_size, FontStyle::Bold);
+            let (left, baseline, exp_w) = (at.x, at.y + exp_m.ascent, exp_m.width);
+            let status_style = if s.hep_status_italic {
+                FontStyle::Italic
+            } else {
+                FontStyle::Regular
+            };
             axis.cmds.extend(text::layout(
                 &s.fonts,
                 exp,
-                box_.x,
+                left,
                 baseline,
                 exp_size,
                 FontStyle::Bold,
@@ -1689,10 +2068,10 @@ impl Axes {
                 axis.cmds.extend(text::layout(
                     &s.fonts,
                     status,
-                    box_.x + exp_w + base * 0.4,
+                    left + exp_w + base * 0.4,
                     baseline,
                     base * 1.05,
-                    FontStyle::Italic,
+                    status_style,
                     fg,
                     HAlign::Left,
                     VAlign::Baseline,
@@ -1739,6 +2118,31 @@ impl Axes {
 
         vec![grid, data, axis]
     }
+}
+
+/// The caller's tick `positions` that fall in `[lo, hi]`, in order, with
+/// labels precise enough to tell neighbours apart.
+fn fixed_ticks(positions: &[f64], lo: f64, hi: f64) -> (Vec<f64>, Vec<String>) {
+    let (lo, hi) = (lo.min(hi), lo.max(hi));
+    let tol = (hi - lo).abs() * 1e-9;
+    let mut ticks: Vec<f64> = positions
+        .iter()
+        .copied()
+        .filter(|v| v.is_finite() && *v >= lo - tol && *v <= hi + tol)
+        .collect();
+    ticks.sort_by(f64::total_cmp);
+    ticks.dedup();
+    let step = ticks
+        .windows(2)
+        .map(|w| w[1] - w[0])
+        .fold(f64::INFINITY, f64::min);
+    let step = if step.is_finite() {
+        step
+    } else {
+        (hi - lo).abs().max(1.0)
+    };
+    let labels = ticker::format_ticks(&ticks, step);
+    (ticks, labels)
 }
 
 impl Default for Axes {
@@ -1829,6 +2233,28 @@ pub struct HistOpts {
     pub(crate) fill_color: Option<Color>,
     pub(crate) label: Option<String>,
     pub(crate) linewidth_pt: Option<f32>,
+    pub(crate) density: bool,
+    pub(crate) per_width: bool,
+    pub(crate) poisson: bool,
+    pub(crate) empty_bins: bool,
+    pub(crate) flow: Flow,
+    pub(crate) hatch: Option<Hatch>,
+    pub(crate) marker: Option<Marker>,
+}
+
+/// What a histogram plot does with its underflow and overflow bins (mplhep's
+/// `flow`). It needs data that keeps them
+/// ([`Hist1dData::underflow`](crate::Hist1dData::underflow)).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[non_exhaustive]
+pub enum Flow {
+    /// Leave them out (the default).
+    #[default]
+    Hide,
+    /// Draw each as one more bin beside the axis, as wide as its neighbour.
+    Show,
+    /// Add them to the first and the last bin.
+    Sum,
 }
 
 impl HistOpts {
@@ -1871,6 +2297,56 @@ impl HistOpts {
     #[must_use]
     pub fn linewidth(mut self, pt: f32) -> Self {
         self.linewidth_pt = Some(pt);
+        self
+    }
+    /// With `on`, divide each bin by its width (mplhep's `binwnorm`): events
+    /// per unit of x, the form in which bins of different widths compare.
+    #[must_use]
+    pub fn per_width(mut self, on: bool) -> Self {
+        self.per_width = on;
+        self
+    }
+    /// With `on`, normalise to unit area (matplotlib's `density`): each bin
+    /// divided by its width and by the sum of the bins, for comparing shapes.
+    #[must_use]
+    pub fn density(mut self, on: bool) -> Self {
+        self.density = on;
+        self
+    }
+    /// With `on`, draw each bin that holds a count (a non-negative whole
+    /// number) with its exact Poisson interval at 68.27 %, the asymmetric
+    /// error bar of data, in place of `√N`. A weighted bin keeps its own
+    /// error.
+    #[must_use]
+    pub fn poisson_errors(mut self, on: bool) -> Self {
+        self.poisson = on;
+        self
+    }
+    /// With `on`, an errorbar histogram draws its empty bins too (with
+    /// [`poisson_errors`](Self::poisson_errors), each shows the upper limit
+    /// of zero events). They are left out by default.
+    #[must_use]
+    pub fn empty_bins(mut self, on: bool) -> Self {
+        self.empty_bins = on;
+        self
+    }
+    /// Set what happens to the underflow and overflow bins.
+    #[must_use]
+    pub fn flow(mut self, flow: Flow) -> Self {
+        self.flow = flow;
+        self
+    }
+    /// Hatch a band or a fill: `HistType::Band` with a hatch is the usual
+    /// statistical-uncertainty band, lines with no fill behind them.
+    #[must_use]
+    pub fn hatch(mut self, hatch: Hatch) -> Self {
+        self.hatch = Some(hatch);
+        self
+    }
+    /// Set the marker of an errorbar histogram (a filled circle by default).
+    #[must_use]
+    pub fn marker(mut self, marker: Marker) -> Self {
+        self.marker = Some(marker);
         self
     }
 }
@@ -2233,7 +2709,7 @@ mod tests {
             let Artist::Step(a) = &ax.artists[0] else {
                 panic!("not a histogram")
             };
-            assert_eq!(a.errs, Some(vec![2.0, 3.0]), "{histtype}");
+            assert_eq!(a.errs, Some(vec![(2.0, 2.0), (3.0, 3.0)]), "{histtype}");
         }
         // A plain step outline draws no error bars unless asked.
         let mut ax = Axes::new();
