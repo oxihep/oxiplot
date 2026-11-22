@@ -181,7 +181,7 @@ fn a_span_shades_the_frame_without_moving_the_limits() {
     let mut ax = Axes::new();
     ax.plot(&[100.0, 160.0], &[9.0, 2.0]).unwrap();
     let before = (ax.resolved_xlim(), ax.resolved_ylim());
-    ax.axvspan(120.0, 130.0);
+    ax.axvspan(120.0..130.0);
     ax.axhspan_with(
         -50.0..50.0,
         FillOpts::new()

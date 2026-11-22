@@ -391,11 +391,11 @@ impl Axes {
         self
     }
 
-    /// Shade the frame between the x values `lo` and `hi` in translucent
-    /// gray (matplotlib's `axvspan`): a signal region, a blinded window. It
-    /// does not widen the limits.
-    pub fn axvspan(&mut self, lo: f64, hi: f64) -> &mut Self {
-        self.span(false, lo, hi, FillOpts::new())
+    /// Shade the frame over a range of x values in translucent gray
+    /// (matplotlib's `axvspan`): a signal region, a blinded window. It does
+    /// not widen the limits.
+    pub fn axvspan(&mut self, range: std::ops::Range<f64>) -> &mut Self {
+        self.span(false, range.start, range.end, FillOpts::new())
     }
 
     /// [`axvspan`](Self::axvspan) with a colour, opacity, edge, hatch and
@@ -415,10 +415,10 @@ impl Axes {
         self.span(false, range.start, range.end, opts)
     }
 
-    /// Shade the frame between the y values `lo` and `hi` (matplotlib's
-    /// `axhspan`): a ±1σ strip in a pull or ratio panel.
-    pub fn axhspan(&mut self, lo: f64, hi: f64) -> &mut Self {
-        self.span(true, lo, hi, FillOpts::new())
+    /// Shade the frame over a range of y values (matplotlib's `axhspan`): a
+    /// ±1σ strip in a pull or ratio panel.
+    pub fn axhspan(&mut self, range: std::ops::Range<f64>) -> &mut Self {
+        self.span(true, range.start, range.end, FillOpts::new())
     }
 
     /// [`axhspan`](Self::axhspan) with options.
