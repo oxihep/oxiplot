@@ -10,6 +10,76 @@ use crate::draw::{DrawCommand, DrawGroup, Rect, Stroke};
 use crate::style::Style;
 use crate::transform::{Bounds, Transform};
 
+/// Lines drawn across a filled region: an uncertainty band, a shaded span.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum Hatch {
+    /// Rising diagonals (matplotlib `"///"`): the usual statistical
+    /// uncertainty band.
+    Diagonal,
+    /// Falling diagonals (`"\\\\\\"`).
+    BackDiagonal,
+    /// Both (`"xxx"`).
+    Cross,
+}
+
+/// Hatch `rect` (in pixels) with lines `spacing` pixels apart. The lines
+/// belong to one lattice anchored at the figure's origin, so neighbouring
+/// rectangles line up.
+pub(crate) fn hatch_rect(
+    g: &mut DrawGroup,
+    rect: Rect,
+    hatch: Hatch,
+    spacing: f32,
+    stroke: &Stroke,
+) {
+    if rect.w <= 0.0 || rect.h <= 0.0 || spacing <= 0.0 {
+        return;
+    }
+    // A diagonal at 45 degrees crosses a horizontal line every
+    // `spacing × √2` pixels.
+    let pitch = spacing * std::f32::consts::SQRT_2;
+    let (left, right, top, bottom) = (rect.x, rect.right(), rect.y, rect.bottom());
+    let rising = |g: &mut DrawGroup| {
+        // Points with x + y = c: up and to the right on screen.
+        let mut c = ((left + top) / pitch).ceil() * pitch;
+        while c < right + bottom {
+            let (x0, x1) = ((c - bottom).max(left), (c - top).min(right));
+            if x1 > x0 {
+                g.push(DrawCommand::Line {
+                    p0: (x0, c - x0),
+                    p1: (x1, c - x1),
+                    stroke: stroke.clone(),
+                });
+            }
+            c += pitch;
+        }
+    };
+    let falling = |g: &mut DrawGroup| {
+        // Points with x − y = c: down and to the right on screen.
+        let mut c = ((left - bottom) / pitch).ceil() * pitch;
+        while c < right - top {
+            let (x0, x1) = ((c + top).max(left), (c + bottom).min(right));
+            if x1 > x0 {
+                g.push(DrawCommand::Line {
+                    p0: (x0, x0 - c),
+                    p1: (x1, x1 - c),
+                    stroke: stroke.clone(),
+                });
+            }
+            c += pitch;
+        }
+    };
+    match hatch {
+        Hatch::Diagonal => rising(g),
+        Hatch::BackDiagonal => falling(g),
+        Hatch::Cross => {
+            rising(g);
+            falling(g);
+        }
+    }
+}
+
 /// Marker shape for data points.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[non_exhaustive]
@@ -23,10 +93,31 @@ pub enum Marker {
     Square,
     /// Upward triangle (`^`).
     TriangleUp,
+    /// Downward triangle (`v`).
+    TriangleDown,
+    /// Diamond (`D`).
+    Diamond,
+    /// Diagonal cross (`x`).
+    Cross,
+    /// Upright cross (`+`).
+    Plus,
+    /// Five-pointed star (`*`).
+    Star,
+    /// Circle outline: an open marker, as ROOT's `kOpenCircle`.
+    OpenCircle,
+    /// Square outline.
+    OpenSquare,
+    /// Upward triangle outline.
+    OpenTriangleUp,
+    /// Downward triangle outline.
+    OpenTriangleDown,
+    /// Diamond outline.
+    OpenDiamond,
 }
 
 impl Marker {
-    /// The matplotlib marker spec (`"none"`, `"o"`, `"s"`, `"^"`).
+    /// The marker spec: matplotlib's (`"none"`, `"o"`, `"s"`, `"^"`, `"v"`,
+    /// `"D"`, `"x"`, `"+"`, `"*"`), and `"open "` before it for an outline.
     #[must_use]
     pub fn spec(self) -> &'static str {
         match self {
@@ -34,6 +125,28 @@ impl Marker {
             Marker::Circle => "o",
             Marker::Square => "s",
             Marker::TriangleUp => "^",
+            Marker::TriangleDown => "v",
+            Marker::Diamond => "D",
+            Marker::Cross => "x",
+            Marker::Plus => "+",
+            Marker::Star => "*",
+            Marker::OpenCircle => "open o",
+            Marker::OpenSquare => "open s",
+            Marker::OpenTriangleUp => "open ^",
+            Marker::OpenTriangleDown => "open v",
+            Marker::OpenDiamond => "open D",
+        }
+    }
+
+    /// Whether the marker is an outline, and the solid shape it outlines.
+    fn outline(self) -> (bool, Marker) {
+        match self {
+            Marker::OpenCircle => (true, Marker::Circle),
+            Marker::OpenSquare => (true, Marker::Square),
+            Marker::OpenTriangleUp => (true, Marker::TriangleUp),
+            Marker::OpenTriangleDown => (true, Marker::TriangleDown),
+            Marker::OpenDiamond => (true, Marker::Diamond),
+            solid => (false, solid),
         }
     }
 }
@@ -54,6 +167,16 @@ impl FromStr for Marker {
             "o" => Ok(Marker::Circle),
             "s" => Ok(Marker::Square),
             "^" => Ok(Marker::TriangleUp),
+            "v" => Ok(Marker::TriangleDown),
+            "D" => Ok(Marker::Diamond),
+            "x" => Ok(Marker::Cross),
+            "+" => Ok(Marker::Plus),
+            "*" => Ok(Marker::Star),
+            "open o" => Ok(Marker::OpenCircle),
+            "open s" => Ok(Marker::OpenSquare),
+            "open ^" => Ok(Marker::OpenTriangleUp),
+            "open v" => Ok(Marker::OpenTriangleDown),
+            "open D" => Ok(Marker::OpenDiamond),
             _ => Err(ParseMarkerError(s.to_string())),
         }
     }
@@ -87,6 +210,8 @@ pub(crate) enum LegendHandle {
         face: Option<Color>,
         edge: Option<Color>,
         width_pt: f32,
+        /// Lines across the sample, and their colour.
+        hatch: Option<(Hatch, Color)>,
     },
 }
 
@@ -97,7 +222,9 @@ pub(crate) struct LegendItem {
     pub handle: LegendHandle,
 }
 
-/// Draw a marker centered at `c` with pixel diameter `size_px`.
+/// Draw a marker centered at `c` with pixel diameter `size_px`. An open
+/// marker is the outline of its solid shape in the fill colour; a cross or a
+/// plus is two strokes in it.
 pub(crate) fn draw_marker(
     g: &mut DrawGroup,
     shape: Marker,
@@ -107,8 +234,19 @@ pub(crate) fn draw_marker(
     edge: Option<Stroke>,
 ) {
     let r = size_px / 2.0;
+    let (open, shape) = shape.outline();
+    // The outline, and the strokes of a cross, are a sixth of the marker wide.
+    let pen = |color: Color| Stroke::new(color, (size_px / 6.0).max(0.6));
+    let (fill, edge) = match (open, fill) {
+        (true, Some(color)) => (None, Some(pen(color))),
+        _ => (fill, edge),
+    };
+    let polygon = |pts: Vec<(f32, f32)>| DrawCommand::Polygon {
+        pts,
+        fill,
+        stroke: edge.clone(),
+    };
     match shape {
-        Marker::None => {}
         Marker::Circle => g.push(DrawCommand::Circle {
             c,
             r,
@@ -120,15 +258,61 @@ pub(crate) fn draw_marker(
             fill,
             stroke: edge,
         }),
-        Marker::TriangleUp => g.push(DrawCommand::Polygon {
-            pts: vec![
-                (c.0, c.1 - r),
-                (c.0 + r * 0.866, c.1 + r * 0.5),
-                (c.0 - r * 0.866, c.1 + r * 0.5),
-            ],
-            fill,
-            stroke: edge,
-        }),
+        Marker::TriangleUp => g.push(polygon(vec![
+            (c.0, c.1 - r),
+            (c.0 + r * 0.866, c.1 + r * 0.5),
+            (c.0 - r * 0.866, c.1 + r * 0.5),
+        ])),
+        Marker::TriangleDown => g.push(polygon(vec![
+            (c.0, c.1 + r),
+            (c.0 + r * 0.866, c.1 - r * 0.5),
+            (c.0 - r * 0.866, c.1 - r * 0.5),
+        ])),
+        Marker::Diamond => g.push(polygon(vec![
+            (c.0, c.1 - r * 1.2),
+            (c.0 + r * 0.9, c.1),
+            (c.0, c.1 + r * 1.2),
+            (c.0 - r * 0.9, c.1),
+        ])),
+        Marker::Star => {
+            // Ten vertices, alternating the outer and the inner radius.
+            let pts = (0..10_u8)
+                .map(|i| {
+                    let radius = if i % 2 == 0 { r * 1.25 } else { r * 0.5 };
+                    let angle = std::f32::consts::PI * (f32::from(i) / 5.0 - 0.5);
+                    (c.0 + radius * angle.cos(), c.1 + radius * angle.sin())
+                })
+                .collect();
+            g.push(polygon(pts));
+        }
+        Marker::Cross | Marker::Plus => {
+            let Some(color) = fill.or_else(|| edge.as_ref().map(|e| e.color)) else {
+                return;
+            };
+            // A plus reaches the marker's radius; a cross the same length
+            // along the diagonals.
+            let d = if shape == Marker::Plus { r } else { r * 0.707 };
+            let arms = if shape == Marker::Plus {
+                [((-d, 0.0), (d, 0.0)), ((0.0, -d), (0.0, d))]
+            } else {
+                [((-d, -d), (d, d)), ((-d, d), (d, -d))]
+            };
+            for (a, b) in arms {
+                g.push(DrawCommand::Line {
+                    p0: (c.0 + a.0, c.1 + a.1),
+                    p1: (c.0 + b.0, c.1 + b.1),
+                    stroke: pen(color),
+                });
+            }
+        }
+        // `outline` maps every open marker to its solid shape, and no marker
+        // draws nothing.
+        Marker::None
+        | Marker::OpenCircle
+        | Marker::OpenSquare
+        | Marker::OpenTriangleUp
+        | Marker::OpenTriangleDown
+        | Marker::OpenDiamond => {}
     }
 }
 
@@ -268,7 +452,7 @@ impl std::error::Error for ParseHistTypeError {}
 
 /// A finite value, or 0 for NaN/±∞ (a bin that cannot be drawn shows empty
 /// rather than poisoning the whole outline).
-fn finite_or_zero(v: f64) -> f64 {
+pub(crate) fn finite_or_zero(v: f64) -> f64 {
     if v.is_finite() { v } else { 0.0 }
 }
 
@@ -302,7 +486,13 @@ fn staircase(edges: &[f64], values: &[f64], baseline: bool) -> Vec<(f64, f64)> {
 pub(crate) struct StepArtist {
     pub edges: Vec<f64>,
     pub values: Vec<f64>,
-    pub errs: Option<Vec<f64>>,
+    /// The `(low, high)` error of each bin: how far its bar reaches below
+    /// and above the value.
+    pub errs: Option<Vec<(f64, f64)>>,
+    /// Whether an errorbar histogram draws a bin that holds nothing.
+    pub empty_bins: bool,
+    /// Lines drawn across a band or a fill, on top of its colour.
+    pub hatch: Option<Hatch>,
     pub histtype: HistType,
     pub color: Color,
     pub fill_color: Option<Color>,
@@ -330,22 +520,30 @@ impl StepArtist {
             if !v.is_finite() {
                 continue;
             }
-            let e = self.err(i);
+            let (el, eh) = self.err(i);
             let (lo, hi) = (self.edges[i], self.edges[i + 1]);
             b = b
-                .union(Bounds::new(lo, hi, v - e, v + e))
+                .union(Bounds::new(lo, hi, v - el, v + eh))
                 .union(Bounds::new(lo, hi, v, v));
         }
         Some(b)
     }
 
-    /// The error of bin `i`, or 0 when there are none or it is not finite.
-    fn err(&self, i: usize) -> f64 {
+    /// The `(low, high)` error of bin `i`: 0 where there is none or it is
+    /// not finite.
+    fn err(&self, i: usize) -> (f64, f64) {
         self.errs
             .as_ref()
             .and_then(|e| e.get(i))
-            .copied()
-            .map_or(0.0, finite_or_zero)
+            .map_or((0.0, 0.0), |&(lo, hi)| {
+                (finite_or_zero(lo), finite_or_zero(hi))
+            })
+    }
+
+    /// Whether an errorbar histogram draws bin `i`: an empty bin is left
+    /// out unless asked for, as ROOT leaves it out of a data histogram.
+    fn shown(&self, i: usize) -> bool {
+        self.values[i].is_finite() && (self.empty_bins || self.values[i] != 0.0)
     }
 
     fn map(&self, t: &Transform, pts: &[(f64, f64)]) -> Vec<(f32, f32)> {
@@ -357,20 +555,47 @@ impl StepArtist {
             return;
         }
         let stroke = Stroke::new(self.color, style.px(1.0));
+        let points = self.histtype == HistType::Errorbar;
         for i in 0..self.n() {
-            let (v, e) = (self.values[i], self.err(i));
-            if !v.is_finite() || e == 0.0 {
+            let (v, (el, eh)) = (self.values[i], self.err(i));
+            if !v.is_finite() || (el == 0.0 && eh == 0.0) || (points && !self.shown(i)) {
                 continue;
             }
             let c = 0.5 * (self.edges[i] + self.edges[i + 1]);
             let cx = t.x(c);
-            let ytop = t.y(v + e);
-            let ybot = t.y(v - e);
+            let ytop = t.y(v + eh);
+            let ybot = t.y(v - el);
             g.push(DrawCommand::Line {
                 p0: (cx, ybot),
                 p1: (cx, ytop),
                 stroke: stroke.clone(),
             });
+        }
+    }
+
+    /// Hatch each bin between `lower` and `upper`. The lines are laid on one
+    /// lattice over the whole figure, so they run on from bin to bin.
+    fn draw_hatch(
+        &self,
+        t: &Transform,
+        style: &Style,
+        g: &mut DrawGroup,
+        lower: &[f64],
+        upper: &[f64],
+    ) {
+        let Some(hatch) = self.hatch else {
+            return;
+        };
+        let stroke = Stroke::new(self.color, style.px(0.6));
+        for i in 0..self.n() {
+            let (lo, hi) = (lower[i], upper[i]);
+            if !lo.is_finite() || !hi.is_finite() || lo == hi {
+                continue;
+            }
+            let (x0, x1) = (t.x(self.edges[i]), t.x(self.edges[i + 1]));
+            let (y0, y1) = (t.y(hi), t.y(lo));
+            let rect = Rect::new(x0.min(x1), y0.min(y1), (x1 - x0).abs(), (y1 - y0).abs());
+            hatch_rect(g, rect, hatch, style.px(4.5), &stroke);
         }
     }
 
@@ -395,12 +620,14 @@ impl StepArtist {
                     fill: Some(self.fill_color.unwrap_or(self.color)),
                     stroke: Some(Stroke::line(self.color, style.px(self.width_pt))),
                 });
+                let zeros = vec![0.0; n];
+                self.draw_hatch(t, style, g, &zeros, &self.values);
                 self.draw_errorbars(t, style, g);
             }
             HistType::Errorbar => {
                 let size = style.px(self.marker_size_pt);
                 for i in 0..n {
-                    if !self.values[i].is_finite() {
+                    if !self.shown(i) {
                         continue;
                     }
                     let c = 0.5 * (self.edges[i] + self.edges[i + 1]);
@@ -410,17 +637,27 @@ impl StepArtist {
                 self.draw_errorbars(t, style, g);
             }
             HistType::Band => {
-                let upper: Vec<f64> = (0..n).map(|i| self.values[i] + self.err(i)).collect();
-                let lower: Vec<f64> = (0..n).map(|i| self.values[i] - self.err(i)).collect();
+                let upper: Vec<f64> = (0..n).map(|i| self.values[i] + self.err(i).1).collect();
+                let lower: Vec<f64> = (0..n).map(|i| self.values[i] - self.err(i).0).collect();
                 let mut up = staircase(&self.edges, &upper, false);
                 let mut lo = staircase(&self.edges, &lower, false);
                 lo.reverse();
                 up.append(&mut lo);
-                g.push(DrawCommand::Polygon {
-                    pts: self.map(t, &up),
-                    fill: Some(self.fill_color.unwrap_or(self.color.with_alpha(0.3))),
-                    stroke: None,
-                });
+                // A hatched band is lines on a clear ground unless a fill
+                // colour is asked for; a plain one is a translucent fill.
+                let fill = match (self.hatch, self.fill_color) {
+                    (_, Some(color)) => Some(color),
+                    (Some(_), None) => None,
+                    (None, None) => Some(self.color.with_alpha(0.3)),
+                };
+                if fill.is_some() {
+                    g.push(DrawCommand::Polygon {
+                        pts: self.map(t, &up),
+                        fill,
+                        stroke: None,
+                    });
+                }
+                self.draw_hatch(t, style, g, &lower, &upper);
             }
         }
     }
@@ -446,9 +683,14 @@ impl StepArtist {
                     marker_size_pt: 0.0,
                 },
                 HistType::Band => LegendHandle::Patch {
-                    face: Some(self.fill_color.unwrap_or(self.color.with_alpha(0.3))),
+                    face: match (self.hatch, self.fill_color) {
+                        (_, Some(color)) => Some(color),
+                        (Some(_), None) => None,
+                        (None, None) => Some(self.color.with_alpha(0.3)),
+                    },
                     edge: None,
                     width_pt: self.width_pt,
+                    hatch: self.hatch.map(|h| (h, self.color)),
                 },
             };
             LegendItem { label, handle }
@@ -759,6 +1001,60 @@ pub(crate) enum Artist {
     Band(BandArtist),
     RefLine(RefLineArtist),
     Segments(SegmentsArtist),
+    Span(SpanArtist),
+}
+
+/// A shaded span across the whole frame between two x or two y values
+/// (matplotlib `axvspan`/`axhspan`): a signal region, a blinded window. It
+/// does not widen the limits.
+#[derive(Debug, Clone)]
+pub(crate) struct SpanArtist {
+    /// Whether the span runs between two y values (a horizontal strip).
+    pub horizontal: bool,
+    pub lo: f64,
+    pub hi: f64,
+    pub face: Option<Color>,
+    pub edge: Option<(Color, f32)>,
+    /// Lines across the span, and their colour.
+    pub hatch: Option<(Hatch, Color)>,
+    pub label: Option<String>,
+}
+
+impl SpanArtist {
+    fn draw(&self, t: &Transform, style: &Style, g: &mut DrawGroup) {
+        if !self.lo.is_finite() || !self.hi.is_finite() {
+            return;
+        }
+        let frame = t.frame();
+        let rect = if self.horizontal {
+            let (a, b) = (t.y(self.lo), t.y(self.hi));
+            Rect::new(frame.x, a.min(b), frame.w, (a - b).abs())
+        } else {
+            let (a, b) = (t.x(self.lo), t.x(self.hi));
+            Rect::new(a.min(b), frame.y, (a - b).abs(), frame.h)
+        };
+        g.push(DrawCommand::Rect {
+            rect,
+            fill: self.face,
+            stroke: self.edge.map(|(c, w)| Stroke::new(c, style.px(w))),
+        });
+        if let Some((hatch, color)) = self.hatch {
+            let stroke = Stroke::new(color, style.px(0.6));
+            hatch_rect(g, rect, hatch, style.px(4.5), &stroke);
+        }
+    }
+
+    fn legend(&self) -> Option<LegendItem> {
+        self.label.clone().map(|label| LegendItem {
+            label,
+            handle: LegendHandle::Patch {
+                face: self.face,
+                edge: self.edge.map(|(c, _)| c),
+                width_pt: self.edge.map_or(0.0, |(_, w)| w),
+                hatch: self.hatch,
+            },
+        })
+    }
 }
 
 /// A filled region between a lower and an upper curve over the same `xs`
@@ -820,6 +1116,7 @@ impl BandArtist {
                 face: self.face,
                 edge: self.edge.map(|(c, _)| c),
                 width_pt: self.edge.map_or(0.0, |(_, w)| w),
+                hatch: None,
             },
         })
     }
@@ -925,7 +1222,7 @@ impl Artist {
             Artist::Errorbar(a) => a.bounds(),
             Artist::Mesh(a) => a.bounds(),
             Artist::Band(a) => a.bounds(),
-            Artist::RefLine(_) => None,
+            Artist::RefLine(_) | Artist::Span(_) => None,
             Artist::Segments(a) => a.bounds(),
         }
     }
@@ -939,6 +1236,7 @@ impl Artist {
             Artist::Band(a) => a.draw(t, style, g),
             Artist::RefLine(a) => a.draw(t, style, g),
             Artist::Segments(a) => a.draw(t, style, g),
+            Artist::Span(a) => a.draw(t, style, g),
         }
     }
 
@@ -950,7 +1248,9 @@ impl Artist {
             Artist::Step(a) => &a.values,
             Artist::Errorbar(a) => &a.ys,
             Artist::Band(a) => &a.lo,
-            Artist::Mesh(_) | Artist::RefLine(_) | Artist::Segments(_) => return None,
+            Artist::Mesh(_) | Artist::RefLine(_) | Artist::Segments(_) | Artist::Span(_) => {
+                return None;
+            }
         };
         ys.iter()
             .copied()
@@ -999,7 +1299,7 @@ impl Artist {
             Artist::Step(a) => {
                 let mut pts = along(&staircase(&a.edges, &a.values, false));
                 for i in 0..a.n() {
-                    let (v, e) = (a.values[i], a.err(i));
+                    let (v, (_, e)) = (a.values[i], a.err(i));
                     if v.is_finite() && e > 0.0 {
                         let c = 0.5 * (a.edges[i] + a.edges[i + 1]);
                         pts.push(t.pt((c, v + e)));
@@ -1019,7 +1319,7 @@ impl Artist {
                         }
                         // A fill spans [0, v]; a band [v − e, v + e].
                         let (hi, lo) = if a.histtype == HistType::Band {
-                            (v + a.err(i), v - a.err(i))
+                            (v + a.err(i).1, v - a.err(i).0)
                         } else {
                             (v, 0.0)
                         };
@@ -1076,6 +1376,8 @@ impl Artist {
                     .collect()
             }
             Artist::Segments(a) => a.segments.iter().flatten().map(|&p| t.pt(p)).collect(),
+            // A span is ground the data stands on: a legend may sit over it.
+            Artist::Span(_) => Vec::new(),
         }
     }
 
@@ -1088,6 +1390,7 @@ impl Artist {
             Artist::Band(a) => a.legend(),
             Artist::RefLine(a) => a.legend(),
             Artist::Segments(a) => a.legend(),
+            Artist::Span(a) => a.legend(),
         }
     }
 }

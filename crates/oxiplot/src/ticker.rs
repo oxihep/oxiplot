@@ -1,73 +1,52 @@
 //! Tick location and formatting — a "nice numbers" locator (like matplotlib's
 //! `MaxNLocator`) and a plain decimal/scientific formatter (`ScalarFormatter`).
 
-/// Round `x` to a "nice" number (1, 2, 5, or 10 × a power of ten).
-fn nice_num(x: f64, round: bool) -> f64 {
-    if x <= 0.0 {
-        return 0.0;
-    }
-    let exp = x.log10().floor();
-    let frac = x / 10f64.powf(exp);
-    let nice = if round {
-        if frac < 1.5 {
-            1.0
-        } else if frac < 3.0 {
-            2.0
-        } else if frac < 7.0 {
-            5.0
-        } else {
-            10.0
-        }
-    } else if frac <= 1.0 {
-        1.0
-    } else if frac <= 2.0 {
-        2.0
-    } else if frac <= 5.0 {
-        5.0
-    } else {
-        10.0
-    };
-    nice * 10f64.powf(exp)
-}
-
-/// Major tick step for a `[lo, hi]` range targeting roughly `target` ticks.
+/// Major tick step for a `[lo, hi]` range: the smallest "nice" step (1, 2 or
+/// 5 times a power of ten) that puts at most `target` ticks in the range, as
+/// matplotlib's `MaxNLocator` does.
 ///
-/// Rounding the range up to a nice number can leave a step so coarse that
-/// only one tick falls inside (`[-3, 3]` with 3 ticks wanted gives a step of
-/// 5: just `0`); the step then drops to the next smaller nice value
-/// (5 → 2 → 1 → 0.5 …) until at least two ticks are in range.
+/// Choosing the smallest step that fits, and not rounding the range up
+/// first, keeps an axis from being left with two labels: `[-0.55, 1.55]`
+/// with 7 ticks wanted steps by 0.5 (five ticks), not by 1 (two).
 #[must_use]
 pub fn nice_step(lo: f64, hi: f64, target: usize) -> f64 {
     let span = (hi - lo).abs();
     if span < f64::EPSILON || !span.is_finite() {
         return 1.0;
     }
-    let range = nice_num(span, false);
-    let mut step = nice_num(range / (target.max(2) - 1) as f64, true);
     let (lo, hi) = (lo.min(hi), lo.max(hi));
-    for _ in 0..4 {
+    let target = target.max(2);
+    let inside = |step: f64| {
         let tol = step * 1e-6;
-        let inside = ((hi + tol) / step).floor() - ((lo - tol) / step).ceil() + 1.0;
-        if inside >= 2.0 {
-            break;
+        ((hi + tol) / step).floor() - ((lo - tol) / step).ceil() + 1.0
+    };
+    // Start a decade below the step that would give `target` intervals: no
+    // smaller step can fit.
+    let exponent = crate::num::floor_i32((span / target as f64).log10()) - 1;
+    // A power of ten below one as a division, so that 2 × 10⁻¹ is exactly 0.2.
+    let scaled = |mantissa: f64, e: i32| {
+        if e < 0 {
+            mantissa / 10f64.powi(-e)
+        } else {
+            mantissa * 10f64.powi(e)
         }
-        step = smaller_nice(step);
+    };
+    let mut fallback = scaled(1.0, exponent);
+    for decade in 0..4 {
+        for mantissa in [1.0, 2.0, 5.0] {
+            let step = scaled(mantissa, exponent + decade);
+            let count = inside(step);
+            if count >= 2.0 {
+                fallback = step;
+            }
+            if count <= target as f64 {
+                // The first step that fits; if it leaves fewer than two
+                // ticks, the finer one before it reads better.
+                return if count >= 2.0 { step } else { fallback };
+            }
+        }
     }
-    step
-}
-
-/// The next nice number below `step`: 10 → 5 → 2 → 1, times its power of ten.
-fn smaller_nice(step: f64) -> f64 {
-    let exp = step.log10().floor();
-    let base = 10f64.powf(exp);
-    let mantissa = (step / base).round();
-    if mantissa >= 5.0 {
-        2.0 * base
-    } else if mantissa >= 2.0 {
-        base
-    } else {
-        0.5 * base
-    }
+    fallback
 }
 
 /// Major tick positions within `[lo, hi]` (inclusive, with a tiny tolerance).
@@ -300,6 +279,23 @@ mod tests {
     fn ticks_are_exact_multiples_of_the_step() {
         let t = ticks(100000.0, 100001.0, 6);
         assert_eq!(t[3], 100000.6);
+    }
+
+    /// An axis is filled up to the number of ticks asked for, not left with
+    /// the two that a rounded-up range would give.
+    #[test]
+    fn the_step_is_the_finest_that_fits() {
+        assert_eq!(ticks(-0.55, 1.55, 7), [-0.5, 0.0, 0.5, 1.0, 1.5]);
+        assert_eq!(ticks(50.0, 130.0, 3), [50.0, 100.0]);
+        assert_eq!(ticks(50.0, 130.0, 4), [60.0, 80.0, 100.0, 120.0]);
+        assert_eq!(
+            labels(0.0, 1.0, 6),
+            ["0.0", "0.2", "0.4", "0.6", "0.8", "1.0"]
+        );
+        for target in 2..12 {
+            let n = ticks(0.0277, 0.0287, target).len();
+            assert!((2..=target).contains(&n), "{target} wanted, {n} drawn");
+        }
     }
 
     #[test]

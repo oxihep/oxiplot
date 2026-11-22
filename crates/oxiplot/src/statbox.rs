@@ -47,7 +47,12 @@ pub struct StatBox {
     pub(crate) show_chi2: bool,
     pub(crate) show_prob: bool,
     pub(crate) show_errors: bool,
+    /// Significant figures for a number with no uncertainty, and for a
+    /// parameter and its error too once the caller sets it.
     pub(crate) sig_figs: usize,
+    /// Whether [`sig_figs`](StatBox::sig_figs) was set: a parameter is then
+    /// printed with that many figures instead of to its uncertainty.
+    pub(crate) fixed_figs: bool,
     pub(crate) title: Option<String>,
 }
 
@@ -60,6 +65,7 @@ impl Default for StatBox {
             show_prob: false,
             show_errors: true,
             sig_figs: 4,
+            fixed_figs: false,
             title: None,
         }
     }
@@ -112,10 +118,13 @@ impl StatBox {
         self
     }
 
-    /// Number of significant figures for the numbers (default `4`).
+    /// Print every number with `sig` significant figures, as ROOT's stat box
+    /// does. Without this, a parameter is rounded to its uncertainty (see
+    /// [`fit_stats`](crate::Axes::fit_stats)) and other numbers take four.
     #[must_use]
     pub fn sig_figs(mut self, sig: usize) -> Self {
         self.sig_figs = sig.max(1);
+        self.fixed_figs = true;
         self
     }
 
@@ -139,6 +148,26 @@ pub(crate) struct StatRow {
 pub(crate) struct StatData {
     rows: Vec<StatRow>,
     corner: Corner,
+}
+
+/// A value and its uncertainty to the same decimal place: the uncertainty
+/// keeps two significant figures and the value is rounded to match
+/// (`90.99 ± 0.038`, `4228 ± 25`), the way a result is quoted. Numbers too
+/// large or too small for fixed notation fall back to [`fmt_g`].
+fn fmt_pm(value: f64, err: f64) -> (String, String) {
+    let err = err.abs();
+    if !value.is_finite() || !err.is_finite() || err == 0.0 {
+        return (fmt_g(value, 4), fmt_g(err, 2));
+    }
+    // The decimal place of the uncertainty's second significant figure.
+    let exp = crate::num::floor_i32(err.log10());
+    let largest = value.abs().max(err);
+    if exp < -7 || largest >= 1e7 {
+        return (fmt_g(value, 4), fmt_g(err, 2));
+    }
+    let decimals = usize::try_from((1 - exp).max(0)).unwrap_or(0);
+    // An uncertainty of two or more digits is rounded to a whole number.
+    (format!("{value:.decimals$}"), format!("{err:.decimals$}"))
 }
 
 /// Format a value like C's `%g`: fixed notation with `sig` significant figures,
@@ -219,7 +248,12 @@ pub(crate) fn build(model: &Model, result: &FitResult, opts: &StatBox) -> StatDa
             .unwrap_or_else(|| format!("p{i}"));
         let err = result.errors.get(i).copied().unwrap_or(0.0);
         let text = if opts.show_errors && err.is_finite() && err != 0.0 {
-            format!("{name} = {} ± {}", fmt_g(value, sig), fmt_g(err, sig))
+            if opts.fixed_figs {
+                format!("{name} = {} ± {}", fmt_g(value, sig), fmt_g(err, sig))
+            } else {
+                let (value, err) = fmt_pm(value, err);
+                format!("{name} = {value} ± {err}")
+            }
         } else {
             format!("{name} = {}", fmt_g(value, sig))
         };
@@ -335,7 +369,22 @@ fn overlaps(a: Rect, b: Rect) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{StatBox, build, fmt_g};
+    use super::{StatBox, build, fmt_g, fmt_pm};
+
+    #[test]
+    fn a_value_is_rounded_to_its_uncertainty() {
+        let pm = |v, e| {
+            let (v, e) = fmt_pm(v, e);
+            format!("{v} ± {e}")
+        };
+        assert_eq!(pm(90.9912, 0.03774), "90.991 ± 0.038");
+        assert_eq!(pm(4228.3, 25.43), "4228 ± 25");
+        assert_eq!(pm(7.54, 0.02519), "7.540 ± 0.025");
+        assert_eq!(pm(-0.5, 1.26), "-0.5 ± 1.3");
+        assert_eq!(pm(3.0, 120.0), "3 ± 120");
+        // Out of fixed notation's reach: each keeps its own figures.
+        assert_eq!(pm(1.5e9, 2.0e7), "1.5e9 ± 2e7");
+    }
 
     #[test]
     fn fmt_g_matches_percent_g_style() {

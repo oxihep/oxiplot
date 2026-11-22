@@ -102,10 +102,21 @@ fn rounded_rect(rect: Rect, r: f32) -> Path {
     }
 }
 
-/// The legend's bounding rectangle within `box_` (the frame), or `None` when
-/// there is nothing to draw. Shared by [`draw_legend`] and the stat box, which
-/// stacks beneath the legend when both sit top-right.
-pub(crate) fn legend_rect(ax: &Axes, box_: Rect) -> Option<Rect> {
+/// How a legend's entries are laid out: in columns filled top to bottom,
+/// under an optional title.
+struct Layout {
+    /// Entries per column.
+    rows: usize,
+    /// The width of each column: handle, gap and its widest label.
+    col_w: Vec<f32>,
+    /// The height of the title row (0 with no title).
+    title_h: f32,
+    box_w: f32,
+    box_h: f32,
+}
+
+/// Lay the legend of `ax` out, or `None` when it has no entries.
+fn layout(ax: &Axes) -> Option<Layout> {
     let items = ax.legend_items();
     if items.is_empty() {
         return None;
@@ -113,21 +124,68 @@ pub(crate) fn legend_rect(ax: &Axes, box_: Rect) -> Option<Rect> {
     let s = &ax.style;
     let fs = s.px(s.legend_size_pt);
     // Spacing in font-size units, matching matplotlib's legend rcParams:
-    // borderpad 0.4, handlelength 2.0, handletextpad 0.8, labelspacing 0.5.
+    // borderpad 0.4, handlelength 2.0, handletextpad 0.8, labelspacing 0.5,
+    // columnspacing 2.0.
     let pad = 0.4 * fs;
     let gap = 0.8 * fs;
     let handle_w = 2.0 * fs;
     let row_h = fs * 1.5;
+    let col_gap = 2.0 * fs;
 
-    let max_w = items
+    let cols = ax.legend_columns().clamp(1, items.len());
+    let rows = items.len().div_ceil(cols);
+    let col_w: Vec<f32> = items
+        .chunks(rows)
+        .map(|column| {
+            let widest = column
+                .iter()
+                // Measured as drawn: a `$…$` label is typeset, so its raw
+                // source (backslashes, braces) says nothing about its width.
+                .map(|it| crate::mathtext::label_extents(&s.fonts, &it.label, fs).0)
+                .fold(0.0_f32, f32::max);
+            handle_w + gap + widest
+        })
+        .collect();
+    let (title_w, title_h) = match ax.legend_heading() {
+        Some(title) => (crate::mathtext::label_extents(&s.fonts, title, fs).0, row_h),
+        None => (0.0, 0.0),
+    };
+    let entries_w = col_w.iter().sum::<f32>() + col_gap * (col_w.len() - 1) as f32;
+    Some(Layout {
+        rows,
+        col_w,
+        title_h,
+        box_w: pad * 2.0 + entries_w.max(title_w),
+        box_h: pad * 2.0 + title_h + row_h * rows as f32,
+    })
+}
+
+/// How many of `pts` (data sample points, in pixels) the legend of `ax`
+/// would cover at the best of its candidate spots on a frame at `box_`.
+/// `None` when there is no legend to place.
+pub(crate) fn least_covered(ax: &Axes, box_: Rect, pts: &[(f32, f32)]) -> Option<usize> {
+    let l = layout(ax)?;
+    let s = &ax.style;
+    let margin = s.px(s.axes_linewidth_pt) + 0.5 * s.px(s.legend_size_pt);
+    Loc::CANDIDATES
         .iter()
-        // Measured as drawn: a `$…$` label is typeset, so its raw source
-        // (backslashes, braces) says nothing about its width.
-        .map(|it| crate::mathtext::label_extents(&s.fonts, &it.label, fs).0)
-        .fold(0.0_f32, f32::max);
+        .map(|&loc| {
+            let (x, y) = loc.origin(box_, l.box_w, l.box_h, margin);
+            pts.iter()
+                .filter(|&&(px, py)| px >= x && px <= x + l.box_w && py >= y && py <= y + l.box_h)
+                .count()
+        })
+        .min()
+}
 
-    let box_w = pad + handle_w + gap + max_w + pad;
-    let box_h = pad * 2.0 + row_h * items.len() as f32;
+/// The legend's bounding rectangle within `box_` (the frame), or `None` when
+/// there is nothing to draw. Shared by [`draw_legend`] and the stat box, which
+/// stacks beneath the legend when both sit top-right.
+pub(crate) fn legend_rect(ax: &Axes, box_: Rect) -> Option<Rect> {
+    let l = layout(ax)?;
+    let s = &ax.style;
+    let fs = s.px(s.legend_size_pt);
+    let (box_w, box_h) = (l.box_w, l.box_h);
     let margin = s.px(s.axes_linewidth_pt) + 0.5 * fs; // borderaxespad ~0.5
     let at = |loc: Loc| {
         let (x, y) = loc.origin(box_, box_w, box_h, margin);
@@ -143,6 +201,7 @@ pub(crate) fn legend_rect(ax: &Axes, box_: Rect) -> Option<Rect> {
             // So does each text annotation: a legend over a label hides it.
             let mut keep_clear: Vec<Rect> = ax.stat_box_rect(box_).into_iter().collect();
             keep_clear.extend(ax.annotation_rects_px(box_));
+            keep_clear.extend(ax.hep_label_inside_px(box_));
             let overlaps = |r: &Rect, s: &Rect| {
                 r.x < s.right() && s.x < r.right() && r.y < s.bottom() && s.y < r.bottom()
             };
@@ -166,7 +225,7 @@ pub(crate) fn legend_rect(ax: &Axes, box_: Rect) -> Option<Rect> {
 /// Draw the legend into `g` (the unclipped axis group).
 pub(crate) fn draw_legend(g: &mut DrawGroup, ax: &Axes, box_: Rect) {
     let items = ax.legend_items();
-    let Some(rect) = legend_rect(ax, box_) else {
+    let (Some(rect), Some(l)) = (legend_rect(ax, box_), layout(ax)) else {
         return;
     };
     let (x0, y0, box_w, box_h) = (rect.x, rect.y, rect.w, rect.h);
@@ -190,9 +249,35 @@ pub(crate) fn draw_legend(g: &mut DrawGroup, ax: &Axes, box_: Rect) {
         });
     }
 
+    if let Some(title) = ax.legend_heading() {
+        crate::mathtext::layout_label(
+            g,
+            &s.fonts,
+            title,
+            x0 + box_w / 2.0,
+            y0 + pad + row_h / 2.0,
+            fs,
+            s.fg_color,
+            HAlign::Center,
+            VAlign::Middle,
+            0.0,
+        );
+    }
+    // The left edge of each column.
+    let col_gap = 2.0 * fs;
+    let col_x: Vec<f32> = l
+        .col_w
+        .iter()
+        .scan(x0 + pad, |x, w| {
+            let left = *x;
+            *x += w + col_gap;
+            Some(left)
+        })
+        .collect();
     for (i, it) in items.iter().enumerate() {
-        let cy = y0 + pad + row_h * i as f32 + row_h / 2.0;
-        let hx0 = x0 + pad;
+        let (col, row) = (i / l.rows, i % l.rows);
+        let cy = y0 + pad + l.title_h + row_h * row as f32 + row_h / 2.0;
+        let hx0 = col_x[col];
         let hx1 = hx0 + handle_w;
         let hcx = (hx0 + hx1) / 2.0;
         match &it.handle {
@@ -227,13 +312,19 @@ pub(crate) fn draw_legend(g: &mut DrawGroup, ax: &Axes, box_: Rect) {
                 face,
                 edge,
                 width_pt,
+                hatch,
             } => {
                 let h = fs * 0.8;
+                let rect = Rect::new(hx0, cy - h / 2.0, handle_w, h);
                 g.push(DrawCommand::Rect {
-                    rect: Rect::new(hx0, cy - h / 2.0, handle_w, h),
+                    rect,
                     fill: *face,
                     stroke: edge.map(|c| Stroke::line(c, s.px(*width_pt))),
                 });
+                if let Some((hatch, color)) = hatch {
+                    let stroke = Stroke::new(*color, s.px(0.6));
+                    crate::artists::hatch_rect(g, rect, *hatch, s.px(4.5), &stroke);
+                }
             }
         }
         // Labels go through the math layout so `$…$` renders like axis labels.

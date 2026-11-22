@@ -112,6 +112,8 @@ mod error;
 mod figure;
 mod fonts;
 mod gridspec;
+#[cfg(test)]
+mod hep_tests;
 mod legend;
 mod mathtext;
 mod norm;
@@ -119,6 +121,7 @@ mod num;
 mod render;
 #[cfg(feature = "fit")]
 mod statbox;
+mod stats;
 mod style;
 mod text;
 mod ticker;
@@ -126,8 +129,8 @@ mod timeaxis;
 mod transform;
 
 pub use annotate::{FillOpts, TextOpts};
-pub use artists::{HistType, Marker, ParseHistTypeError, ParseMarkerError};
-pub use axes::{Axes, CurveOpts, ErrorbarOpts, Hist2dOpts, HistOpts, StackOpts};
+pub use artists::{Hatch, HistType, Marker, ParseHistTypeError, ParseMarkerError};
+pub use axes::{Axes, CurveOpts, ErrorbarOpts, Flow, Hist2dOpts, HistOpts, StackOpts};
 pub use cmap::{Colormap, ParseColormapError};
 pub use color::{Color, ParseColorError, TAB10};
 pub use data::{Binned1D, Binned2D, Hist1dData, Hist2dData, PointData, XyPoints};
@@ -142,7 +145,7 @@ pub use legend::Loc;
 pub use norm::Norm;
 #[cfg(feature = "fit")]
 pub use statbox::{Corner, StatBox};
-pub use style::{Sides, Style, TickDir};
+pub use style::{HepLabelLoc, Sides, Style, TickDir};
 pub use text::{HAlign, VAlign};
 pub use timeaxis::{TimeFormat, format_time};
 pub use transform::Scale;

@@ -31,6 +31,17 @@ pub trait Hist1dData {
     fn x_labels(&self) -> Option<Vec<String>> {
         None
     }
+    /// The content and uncertainty of the underflow bin (everything below
+    /// the first edge), when the data keeps one. [`Flow`](crate::Flow)
+    /// decides whether a plot shows it.
+    fn underflow(&self) -> Option<(f64, f64)> {
+        None
+    }
+    /// The content and uncertainty of the overflow bin (everything at or
+    /// above the last edge), when the data keeps one.
+    fn overflow(&self) -> Option<(f64, f64)> {
+        None
+    }
 }
 
 /// A 2-D binned distribution: `nx × ny` in-range bins.
@@ -321,6 +332,152 @@ impl XyPoints {
         check_len("XyPoints y errors (high)", self.xs.len(), high.len())?;
         self.y_errors = Some((low, high));
         Ok(self)
+    }
+}
+
+/// The edges and contents of two histograms compared bin by bin, with the
+/// uncertainties of each.
+struct Pair {
+    edges: Vec<f64>,
+    a: Vec<f64>,
+    a_err: Vec<f64>,
+    b: Vec<f64>,
+    b_err: Vec<f64>,
+}
+
+/// Read `a` and `b` for a bin-by-bin comparison.
+///
+/// # Errors
+///
+/// [`Error::BinningMismatch`] if they do not share their edges.
+fn paired(a: &impl Hist1dData, b: &impl Hist1dData, what: &str) -> Result<Pair> {
+    let (edges, other) = (a.edges(), b.edges());
+    let same = edges.len() == other.len()
+        && edges
+            .iter()
+            .zip(&other)
+            .all(|(x, y)| (x - y).abs() <= 1e-9 * x.abs().max(y.abs()).max(1.0));
+    if !same {
+        return Err(Error::BinningMismatch(format!(
+            "{what}: the two histograms have {} and {} bin edges, or edges that differ",
+            edges.len(),
+            other.len()
+        )));
+    }
+    let (av, bv) = (a.values(), b.values());
+    Ok(Pair {
+        a_err: (0..av.len()).map(|i| a.error(i)).collect(),
+        b_err: (0..bv.len()).map(|i| b.error(i)).collect(),
+        a: av,
+        b: bv,
+        edges,
+    })
+}
+
+impl XyPoints {
+    /// The ratio of two histograms of one binning, as points at the bin
+    /// centres: what the lower panel of a data-over-simulation plot shows.
+    ///
+    /// Each point is `numerator / denominator` with the numerator's
+    /// uncertainty over the denominator. The denominator's own uncertainty
+    /// is not folded in: it is drawn as a band around one, which
+    /// [`Binned1D::relative_uncertainty`] gives. A bin where the denominator
+    /// is zero, or either content is not finite, has no point.
+    ///
+    /// ```
+    /// use oxiplot::{Binned1D, PointData, XyPoints};
+    /// let data = Binned1D::new(vec![0.0, 1.0, 2.0], vec![90.0, 0.0])?;
+    /// let model = Binned1D::new(vec![0.0, 1.0, 2.0], vec![100.0, 0.0])?;
+    /// let ratio = XyPoints::ratio(&data, &model)?;
+    /// assert_eq!((ratio.xs(), ratio.ys()), (vec![0.5], vec![0.9]));
+    /// # Ok::<(), oxiplot::Error>(())
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// [`Error::BinningMismatch`] if the two do not share their bin edges.
+    pub fn ratio(numerator: &impl Hist1dData, denominator: &impl Hist1dData) -> Result<Self> {
+        let p = paired(numerator, denominator, "ratio")?;
+        Self::from_bins(&p, |a, a_err, b, _| {
+            (b != 0.0).then(|| (a / b, a_err / b.abs()))
+        })
+    }
+
+    /// The pull of `data` from `model` in each bin, `(data − model) / σ`,
+    /// with `σ` the two uncertainties in quadrature: the lower panel of a
+    /// fit. A bin with no uncertainty has no point.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::BinningMismatch`] if the two do not share their bin edges.
+    pub fn pull(data: &impl Hist1dData, model: &impl Hist1dData) -> Result<Self> {
+        let p = paired(data, model, "pull")?;
+        let pulls = Self::from_bins(&p, |a, a_err, b, b_err| {
+            let sigma = a_err.hypot(b_err);
+            (sigma > 0.0).then(|| ((a - b) / sigma, 0.0))
+        })?;
+        // A pull is in units of its own uncertainty: it carries no error bar.
+        Ok(XyPoints {
+            y_errors: None,
+            ..pulls
+        })
+    }
+
+    /// The difference `a − b` in each bin, with the two uncertainties in
+    /// quadrature: data minus background.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::BinningMismatch`] if the two do not share their bin edges.
+    pub fn difference(a: &impl Hist1dData, b: &impl Hist1dData) -> Result<Self> {
+        let p = paired(a, b, "difference")?;
+        Self::from_bins(&p, |a, a_err, b, b_err| Some((a - b, a_err.hypot(b_err))))
+    }
+
+    /// One point per bin of `p` where `f(a, a_err, b, b_err)` gives a value
+    /// and its uncertainty, at the bin centre.
+    fn from_bins(p: &Pair, f: impl Fn(f64, f64, f64, f64) -> Option<(f64, f64)>) -> Result<Self> {
+        let (mut xs, mut ys, mut errs) = (Vec::new(), Vec::new(), Vec::new());
+        for i in 0..p.a.len().min(p.b.len()) {
+            let (a, b) = (p.a[i], p.b[i]);
+            if !a.is_finite() || !b.is_finite() {
+                continue;
+            }
+            if let Some((y, err)) = f(a, p.a_err[i], b, p.b_err[i])
+                && y.is_finite()
+            {
+                xs.push(0.5 * (p.edges[i] + p.edges[i + 1]));
+                ys.push(y);
+                errs.push(if err.is_finite() { err } else { 0.0 });
+            }
+        }
+        XyPoints::new(xs, ys)?.with_y_errors(errs)
+    }
+}
+
+impl Binned1D {
+    /// The relative uncertainty of `h` as a histogram of ones: each bin holds
+    /// `1 ± error / |content|`. Drawn as a band
+    /// ([`HistType::Band`](crate::HistType::Band)) in a ratio panel, it shows
+    /// the denominator's uncertainty around the line at one. An empty bin
+    /// gets no uncertainty.
+    #[must_use]
+    pub fn relative_uncertainty(h: &impl Hist1dData) -> Self {
+        let values = h.values();
+        let errors = values
+            .iter()
+            .enumerate()
+            .map(|(i, &v)| {
+                let e = h.error(i) / v.abs();
+                if e.is_finite() { e } else { 0.0 }
+            })
+            .collect();
+        Binned1D {
+            edges: h.edges(),
+            values: vec![1.0; values.len()],
+            errors: Some(errors),
+            labels: None,
+        }
     }
 }
 
