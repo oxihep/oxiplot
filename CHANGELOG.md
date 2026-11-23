@@ -6,6 +6,14 @@ Notable changes to oxiplot and oxiplot-tex, by release. The format follows
 
 ## [Unreleased]
 
+## [0.14.0]
+
+### Changed
+
+- **oxifit 0.11.0**, for the `fit` feature (breaking there: `Axes::model`
+  and the fit annotations take its types). Its formula engine moved to
+  oxiformula; nothing else changes here.
+
 ## [0.13.1]
 
 ### Changed
