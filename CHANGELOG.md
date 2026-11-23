@@ -6,6 +6,17 @@ Notable changes to oxiplot and oxiplot-tex, by release. The format follows
 
 ## [Unreleased]
 
+## [0.13.0]
+
+oxifit 0.10.0, for the `fit` feature.
+
+### Changed
+
+- **oxifit 0.10.0** (breaking for the `fit` feature: `Axes::model` and the
+  fit annotations take its types). Its formula engine follows ROOT's
+  `TFormula`; a model from `Model::from_formula` now has the formula's
+  parameter names.
+
 ## [0.12.0]
 
 What a HEP plot is made of, and four defects found by looking at every
