@@ -6,6 +6,13 @@ Notable changes to oxiplot and oxiplot-tex, by release. The format follows
 
 ## [Unreleased]
 
+## [0.13.1]
+
+### Changed
+
+- **oxifit 0.10.1**, for the `fit` feature: more of ROOT's densities in
+  formulas, and compiled formulas at about ROOT's speed.
+
 ## [0.13.0]
 
 oxifit 0.10.0, for the `fit` feature.
